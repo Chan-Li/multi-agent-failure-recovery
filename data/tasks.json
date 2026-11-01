@@ -1,0 +1,12 @@
+{
+  "_comment": "Task definitions. Each task needs a programmatic success check. Fill in once the domain is chosen.",
+  "tasks": [
+    {
+      "task_id": "example-001",
+      "goal": "TODO: natural-language goal given to the workflow",
+      "inputs": {},
+      "expected": {},
+      "check": "TODO: name of checker function in src/workflow.py"
+    }
+  ]
+}

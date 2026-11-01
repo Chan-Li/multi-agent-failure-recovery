@@ -1,0 +1,35 @@
+# Experiment configuration (Phase 1)
+seed: 0
+repeats: 3
+
+llm:
+  backend: mock          # mock | ollama | anthropic | openai
+  model: null
+  temperature: 0.0
+  max_tokens: 1024
+
+workflow:
+  stages: [researcher, planner, executor]
+  tasks_file: data/tasks.json
+  stage_timeout_s: 60
+
+faults:
+  # Each entry is one fault schedule; identical schedules are reused across recovery methods.
+  - id: none
+    kind: none
+  - id: researcher-wrong-fact
+    kind: incorrect_result     # incorrect_result | malicious_instruction | timeout | stale_output
+    category: accidental       # accidental | adversarial
+    stage: researcher
+  - id: researcher-injection
+    kind: malicious_instruction
+    category: adversarial
+    stage: researcher
+
+recovery:
+  methods: [full_restart, verify_all]   # dependency_aware added in Phase 2
+  oracle_fault_identity: true
+
+output:
+  results_dir: results
+  traces_dir: results/traces

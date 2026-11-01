@@ -1,0 +1,94 @@
+"""Workflow orchestration: researcher -> planner -> executor.
+
+Runs stages in order, passes artifacts as messages, applies fault injection
+hooks, and returns a RunResult with the trace and a programmatic outcome check.
+"""
+from __future__ import annotations
+
+import time
+from dataclasses import dataclass, field
+from typing import Any, Callable, Dict, List, Optional
+
+from .agents import Agent
+from .environment import Environment
+from .fault_injection import FaultInjector
+from .tracing import Artifact, Message, Tracer, new_id
+
+
+@dataclass
+class RunResult:
+    run_id: str
+    task_id: str
+    fault_id: str
+    success: bool
+    outputs: Dict[str, Artifact]          # stage -> artifact
+    tracer: Tracer
+    latency_s: float
+    error: Optional[str] = None
+    metrics: Dict[str, Any] = field(default_factory=dict)
+
+
+# Task checkers: name -> fn(task, outputs, env) -> bool. Registered per domain.
+CHECKERS: Dict[str, Callable[[Dict[str, Any], Dict[str, Artifact], Environment], bool]] = {}
+
+
+def register_checker(name: str):
+    def deco(fn):
+        CHECKERS[name] = fn
+        return fn
+    return deco
+
+
+class Workflow:
+    def __init__(self, agents: List[Agent], env: Environment):
+        self.agents = agents
+        self.env = env
+
+    def run(self, task: Dict[str, Any], injector: Optional[FaultInjector] = None,
+            run_id: Optional[str] = None) -> RunResult:
+        run_id = run_id or new_id("run")
+        tracer = Tracer(run_id)
+        outputs: Dict[str, Artifact] = {}
+        prev: List[Artifact] = []
+        error = None
+        t0 = time.time()
+
+        for agent in self.agents:
+            stage = agent.name
+            tracer.stage_start(stage)
+            try:
+                if injector:
+                    injector.before_stage(stage)
+                art = agent.run(task, prev, self.env, tracer)
+                if injector:
+                    art = injector.after_stage(stage, art)
+                tracer.add_artifact(art)
+            except Exception as e:  # timeouts, agent failures
+                error = f"{stage}: {type(e).__name__}: {e}"
+                tracer.stage_end(stage)
+                break
+            tracer.stage_end(stage)
+            outputs[stage] = art
+            # message to next stage
+            nxt = self._next_stage(agent)
+            if nxt:
+                tracer.add_message(Message(new_id("msg"), stage, nxt, [art.artifact_id]))
+            prev = [art]
+
+        success = error is None and self._check(task, outputs)
+        return RunResult(
+            run_id=run_id, task_id=task["task_id"],
+            fault_id=injector.spec.id if injector else "none",
+            success=success, outputs=outputs, tracer=tracer,
+            latency_s=time.time() - t0, error=error,
+        )
+
+    def _next_stage(self, agent: Agent) -> Optional[str]:
+        idx = self.agents.index(agent)
+        return self.agents[idx + 1].name if idx + 1 < len(self.agents) else None
+
+    def _check(self, task: Dict[str, Any], outputs: Dict[str, Artifact]) -> bool:
+        checker = CHECKERS.get(task.get("check", ""))
+        if checker is None:
+            raise KeyError(f"no checker registered for task {task['task_id']}")
+        return checker(task, outputs, self.env)

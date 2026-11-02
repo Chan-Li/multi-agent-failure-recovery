@@ -53,3 +53,13 @@ def test_mock_clean_success(task):
     res = wf.run(task)
     assert res.success, res.metrics["check_failures"]
     assert sorted(res.metrics["final_state"]["sections"]) == task["expected"]["final_sections"]
+
+
+def test_one_shared_university_many_students():
+    gen = [t for t in TASKS if t["task_id"] != "t000"]
+    assert len(gen) == 20 and len({t["student"] for t in gen}) == 20
+    world = lambda t: {k: t["inputs"]["scenario"][k]
+                       for k in ("catalog", "initial_enrolled", "initial_waitlists")}
+    assert all(world(t) == world(gen[0]) for t in gen)          # same catalog + seat state
+    profiles = {json.dumps([t["requirements"], t["inputs"]["scenario"]["student"]]) for t in gen}
+    assert len(profiles) == 20                                  # every student is different

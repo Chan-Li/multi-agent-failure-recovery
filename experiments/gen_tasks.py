@@ -39,8 +39,13 @@ from typing import Any, Dict, List, Optional, Tuple
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
+import yaml  # noqa: E402
+
+from src.agents import Executor, MockLLM, Planner, Researcher  # noqa: E402
 from src.environment import DEFAULT_SCENARIO, CourseEnrollmentEnv  # noqa: E402
+from src.fault_injection import FaultInjector, FaultSpec, candidate_patches, load_fault_specs  # noqa: E402
 from src.solver import solve  # noqa: E402
+from src.workflow import Workflow  # noqa: E402
 
 ADVISOR = "advisor@univ.example"
 AREAS = {"systems": "SYS", "theory": "THY", "ai": "AIM", "data": "DAT"}
@@ -215,15 +220,80 @@ def generate(seed: int, counts: Dict[str, int], max_tries: int = 3000) -> List[D
     raise RuntimeError("could not build a world that fits all requested students")
 
 
+# ---------------------------------------------------------------------------
+# Dependence search: pick, per task and fault, a corruption that matters
+# ---------------------------------------------------------------------------
+def _mock_workflow() -> Workflow:
+    m = MockLLM()
+    return Workflow([Researcher(m), Planner(m), Executor(m)], CourseEnrollmentEnv())
+
+
+def _signature(res) -> Tuple:
+    """What the outside world sees: final schedule, mail, and every write action."""
+    st = res.metrics["final_state"]
+    acts = tuple((a.tool, json.dumps(a.args, sort_keys=True)) for a in res.tracer.actions
+                 if a.stage == "executor")
+    return (tuple(st["sections"]), tuple(e["to"] for e in st["emails"]), acts)
+
+
+def attach_faults(task: Dict[str, Any], specs: List[FaultSpec]) -> Dict[str, Any]:
+    """For each fault spec, try every candidate patch on the mock (competent but
+    credulous) workflow and keep the first that CHANGES the outcome vs. the
+    clean run, preferring one that also makes the task FAIL. Faults with no
+    such patch are not valid for this task (an ignored fault proves nothing)."""
+    wf = _mock_workflow()
+    clean = wf.run(task)
+    assert clean.success, (task["task_id"], clean.metrics["check_failures"])
+    clean_sig = _signature(clean)
+    facts = CourseEnrollmentEnv(task["inputs"]["scenario"]).true_facts()
+    task["faults"], task["valid_faults"] = {}, []
+    for spec in specs:
+        if spec.kind == "none":
+            continue
+        if spec.kind == "timeout":
+            task["faults"][spec.id] = {"patch": None, "description": f"{spec.stage} times out",
+                                       "harmful": True}
+            task["valid_faults"].append(spec.id)
+            continue
+        changed = None
+        for patch, desc in candidate_patches(spec.type, task, facts):
+            s = FaultSpec(spec.id, spec.kind, spec.category, spec.stage,
+                          {**spec.params, "patch": patch})
+            res = wf.run(task, injector=FaultInjector(s))
+            if _signature(res) == clean_sig:
+                continue
+            entry = {"patch": patch, "description": desc, "harmful": not res.success,
+                     "mock_outcome": {"success": res.success,
+                                      "final_sections": res.metrics["final_state"]["sections"],
+                                      "failures": res.metrics["check_failures"]}}
+            if not res.success:
+                changed = entry
+                break
+            changed = changed or entry
+        if changed:
+            task["faults"][spec.id] = changed
+            task["valid_faults"].append(spec.id)
+    return task
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--easy", type=int, default=6)
     ap.add_argument("--medium", type=int, default=8)
     ap.add_argument("--hard", type=int, default=6)
+    ap.add_argument("--config", default=str(ROOT / "configs" / "experiment.yaml"))
     ap.add_argument("--out", default=str(ROOT / "data" / "tasks.json"))
     args = ap.parse_args()
     tasks = generate(args.seed, {"easy": args.easy, "medium": args.medium, "hard": args.hard})
+    specs = load_fault_specs(yaml.safe_load(open(args.config))["faults"])
+    for t in tasks:
+        attach_faults(t, specs)
+    print(f"{'fault':26s} valid/tasks  harmful(mock)")
+    for spec in specs[1:]:
+        valid = [t for t in tasks if spec.id in t["valid_faults"]]
+        harm = sum(t["faults"][spec.id]["harmful"] for t in valid)
+        print(f"{spec.id:26s} {len(valid):3d}/{len(tasks):<3d}     {harm}")
     Path(args.out).write_text(json.dumps({"seed": args.seed, "tasks": tasks}, indent=1))
     by: Dict[str, int] = {}
     for t in tasks:

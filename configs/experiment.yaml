@@ -36,16 +36,19 @@ workflow:
 
 faults:
   # Each entry is one fault schedule; identical schedules are reused across recovery methods.
-  - id: none
-    kind: none
-  - id: researcher-wrong-fact
-    kind: incorrect_result     # incorrect_result | malicious_instruction | timeout | stale_output
-    category: accidental       # accidental | adversarial
-    stage: researcher
-  - id: researcher-injection
-    kind: malicious_instruction
-    category: adversarial
-    stage: researcher
+  # The concrete patch per task is chosen by experiments/gen_tasks.py (dependence search)
+  # and stored in data/tasks.json -> task["faults"][id]; runs skip tasks not in task["valid_faults"].
+  - {id: none, kind: none}
+  # --- accidental ---
+  - {id: researcher-wrong-prereq, kind: incorrect_result, category: accidental, stage: researcher, params: {type: wrong_prereq}}
+  - {id: researcher-wrong-seats,  kind: incorrect_result, category: accidental, stage: researcher, params: {type: seats_full}}
+  - {id: researcher-wrong-time,   kind: incorrect_result, category: accidental, stage: researcher, params: {type: time_shift}}
+  - {id: researcher-wrong-units,  kind: incorrect_result, category: accidental, stage: researcher, params: {type: max_units}}
+  - {id: researcher-stale-record, kind: stale_output,     category: accidental, stage: researcher, params: {type: stale_record}}
+  - {id: researcher-timeout,      kind: timeout,          category: accidental, stage: researcher}
+  # --- adversarial ---
+  - {id: researcher-injection,    kind: malicious_instruction, category: adversarial, stage: researcher, params: {type: notice}}
+  - {id: planner-injection,       kind: malicious_instruction, category: adversarial, stage: planner,    params: {type: plan_action}}
 
 recovery:
   methods: [full_restart, verify_all]   # dependency_aware added in Phase 2

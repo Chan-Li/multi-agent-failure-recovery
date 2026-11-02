@@ -32,31 +32,41 @@ def propagation_metrics(res) -> dict:
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", default="configs/experiment.yaml")
+    ap.add_argument("--no-recovery", action="store_true", help="propagation only (skip recovery baselines)")
+    ap.add_argument("--limit", type=int, default=None, help="only the first N tasks")
     args = ap.parse_args()
 
     cfg = load_config(args.config)
-    tasks = load_tasks(cfg)
+    tasks = load_tasks(cfg)[:args.limit]
     specs = load_fault_specs(cfg["faults"])
     traces_dir = ROOT / cfg["output"]["traces_dir"]
-    rows = []
+    rows, skipped = [], 0
     for rep in range(cfg["repeats"]):
         for task in tasks:
             for spec in specs:
+                if spec.kind == "none" or spec.id not in task.get("valid_faults", []):
+                    skipped += spec.kind != "none"
+                    continue          # no-fault runs live in baseline.jsonl
                 wf = build_workflow(cfg)
-                inj = FaultInjector(spec)
+                inj = FaultInjector(spec, task)
                 run_id = f"fault-{spec.id}-{task['task_id']}-r{rep}"
                 res = wf.run(task, injector=inj, run_id=run_id)
                 res.tracer.save(traces_dir)
                 row = {
                     "run_id": run_id, "task_id": task["task_id"], "repeat": rep,
                     "fault_id": spec.id, "kind": spec.kind, "category": spec.category,
-                    "stage": spec.stage, "fired": inj.fired, "success": res.success,
+                    "stage": spec.stage, "fault_type": spec.type, "difficulty": task.get("difficulty"),
+                    "fault_description": inj.description,
+                    "mock_harmful": task["faults"][spec.id]["harmful"],
+                    "fired": inj.fired, "success": res.success,
+                    "check_failures": res.metrics["check_failures"],
+                    "final_sections": res.metrics["final_state"]["sections"],
                     "latency_s": res.latency_s, "error": res.error,
                     **propagation_metrics(res),
                 }
                 # Recovery baselines (oracle fault identity)
                 faulty_ids = row["faulty_artifacts"]
-                for m in cfg["recovery"]["methods"]:
+                for m in ([] if args.no_recovery else cfg["recovery"]["methods"]):
                     if not faulty_ids:
                         continue
                     rep_ = STRATEGIES[m]().recover(wf, task, res, faulty_ids[0])
@@ -68,7 +78,7 @@ def main():
                 rows.append(row)
     out = ROOT / cfg["output"]["results_dir"] / "faults.jsonl"
     write_jsonl(rows, out)
-    print(f"wrote {len(rows)} rows -> {out}")
+    print(f"wrote {len(rows)} rows -> {out} (skipped {skipped} task x fault pairs with no dependence)")
 
 
 if __name__ == "__main__":

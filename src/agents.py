@@ -31,11 +31,60 @@ class MockLLM(LLMBackend):
         raise NotImplementedError
 
 
+class OpenAICompatLLM(LLMBackend):
+    """Any OpenAI-compatible endpoint (UCSD course API, Ollama's /v1, vLLM, ...).
+
+    Reads OPENAI_API_KEY / OPENAI_BASE_URL from the environment (or a local
+    .env file, which is git-ignored). Never hard-code the key.
+    """
+
+    def __init__(self, model: str, temperature: float = 0.0, max_tokens: int = 1024,
+                 base_url: Optional[str] = None, api_key: Optional[str] = None,
+                 timeout_s: float = 60.0):
+        import os
+        from openai import OpenAI
+        try:
+            from dotenv import load_dotenv
+            load_dotenv()
+        except ImportError:
+            pass
+        self.client = OpenAI(
+            api_key=api_key or os.environ["OPENAI_API_KEY"],
+            base_url=base_url or os.environ.get("OPENAI_BASE_URL"),
+            timeout=timeout_s,
+        )
+        self.model = model
+        self.temperature = temperature
+        self.max_tokens = max_tokens
+
+    def complete(self, system: str, prompt: str) -> Dict[str, Any]:
+        resp = self.client.chat.completions.create(
+            model=self.model,
+            messages=[{"role": "system", "content": system},
+                      {"role": "user", "content": prompt}],
+            temperature=self.temperature,
+            max_tokens=self.max_tokens,
+        )
+        usage = resp.usage
+        return {
+            "text": resp.choices[0].message.content or "",
+            "prompt_tokens": getattr(usage, "prompt_tokens", 0) if usage else 0,
+            "completion_tokens": getattr(usage, "completion_tokens", 0) if usage else 0,
+        }
+
+
 def build_backend(cfg: Dict[str, Any]) -> LLMBackend:
     backend = cfg.get("backend", "mock")
     if backend == "mock":
         return MockLLM()
-    # TODO: ollama / anthropic / openai adapters
+    if backend in ("openai", "ucsd"):
+        return OpenAICompatLLM(model=cfg["model"], temperature=cfg.get("temperature", 0.0),
+                               max_tokens=cfg.get("max_tokens", 1024))
+    if backend == "ollama":  # Ollama exposes an OpenAI-compatible API
+        return OpenAICompatLLM(model=cfg["model"], temperature=cfg.get("temperature", 0.0),
+                               max_tokens=cfg.get("max_tokens", 1024),
+                               base_url=cfg.get("base_url", "http://localhost:11434/v1"),
+                               api_key="ollama")
     raise NotImplementedError(f"LLM backend '{backend}' not implemented yet")
 
 

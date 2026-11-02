@@ -2,11 +2,32 @@
 seed: 0
 repeats: 3
 
+# LLM settings. `defaults` apply to every role; `roles.<name>` overrides per agent.
+# Usable chat models on tritonai-api.ucsd.edu ($/M tokens in/out):
+#   api-glm-5.3-flash 0.15/0.50 | api-glm-5.3 1.20/3.25 | api-muse-glimmer-30b 0.20/0.40
 llm:
-  backend: mock          # mock | ollama | anthropic | openai
-  model: null
-  temperature: 0.0
-  max_tokens: 1024
+  defaults:
+    backend: mock              # mock | ucsd (OpenAI-compatible, key in .env) | ollama
+    model: api-glm-5.3-flash
+    temperature: 0.0
+    max_tokens: 1024
+  roles:
+    # Main experiment: all core agents share one model (controlled variable).
+    researcher: {model: api-glm-5.3-flash}
+    planner:    {model: api-glm-5.3-flash}
+    executor:   {model: api-glm-5.3-flash}
+    # Verify-all baseline: stronger verifier by default; set to api-glm-5.3-flash
+    # for the self-verification comparison.
+    verifier:   {model: api-glm-5.3}
+
+# Optional ablations (Phase 2 / time permitting) — override `llm.roles` with:
+#   all_strong:     researcher/planner/executor -> api-glm-5.3
+#   strong_planner: planner -> api-glm-5.3
+#   other_family:   researcher/planner/executor -> api-muse-glimmer-30b
+
+environment:
+  domain: course_enrollment
+  restore_mode: realistic    # realistic (external events persist) | oracle (ideal upper bound)
 
 workflow:
   stages: [researcher, planner, executor]

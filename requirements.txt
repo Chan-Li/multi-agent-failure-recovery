@@ -1,7 +1,5 @@
 pyyaml>=6.0
 pandas>=1.5
 matplotlib>=3.6
-# LLM backends (install the one you use)
-# anthropic
-# openai
-# ollama
+openai>=1.40
+python-dotenv>=1.0

@@ -29,10 +29,19 @@ def load_tasks(cfg: Dict[str, Any]) -> List[Dict[str, Any]]:
         return json.load(f)["tasks"]
 
 
+def role_llm_cfg(cfg: Dict[str, Any], role: str) -> Dict[str, Any]:
+    """Merge llm.defaults with llm.roles.<role>."""
+    llm = cfg["llm"]
+    return {**llm.get("defaults", {}), **(llm.get("roles", {}).get(role) or {})}
+
+
+def build_agent(cfg: Dict[str, Any], role: str):
+    return AGENT_REGISTRY[role](build_backend(role_llm_cfg(cfg, role)))
+
+
 def build_workflow(cfg: Dict[str, Any]) -> Workflow:
-    llm = build_backend(cfg["llm"])
     env = build_environment(cfg)
-    agents = [AGENT_REGISTRY[s](llm) for s in cfg["workflow"]["stages"]]
+    agents = [build_agent(cfg, s) for s in cfg["workflow"]["stages"]]
     return Workflow(agents, env)
 
 

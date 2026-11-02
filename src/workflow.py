@@ -45,8 +45,12 @@ class Workflow:
         self.env = env
 
     def run(self, task: Dict[str, Any], injector: Optional[FaultInjector] = None,
-            run_id: Optional[str] = None) -> RunResult:
+            run_id: Optional[str] = None, reset_env: bool = True) -> RunResult:
+        """reset_env=False continues in the current world (e.g. after a
+        realistic restore during recovery) instead of loading a fresh one."""
         run_id = run_id or new_id("run")
+        if reset_env:
+            self.env.reset(task.get("inputs", {}).get("scenario"))
         tracer = Tracer(run_id)
         outputs: Dict[str, Artifact] = {}
         prev: List[Artifact] = []
@@ -68,6 +72,9 @@ class Workflow:
                 tracer.stage_end(stage)
                 break
             tracer.stage_end(stage)
+            # World time passes between stages: competitors may take seats.
+            if hasattr(self.env, "advance_clock"):
+                self.env.advance_clock()
             outputs[stage] = art
             # message to next stage
             nxt = self._next_stage(agent)

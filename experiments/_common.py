@@ -45,6 +45,15 @@ def build_workflow(cfg: Dict[str, Any]) -> Workflow:
     return Workflow(agents, env)
 
 
+def build_verifier(cfg: Dict[str, Any], self_verify: bool = False):
+    """Strong verifier (llm.roles.verifier) or self-verification (the planner's model)."""
+    from src.agents import Verifier
+    llm_cfg = role_llm_cfg(cfg, "verifier")
+    if self_verify:
+        llm_cfg = {**llm_cfg, "model": role_llm_cfg(cfg, "planner")["model"]}
+    return Verifier(build_backend(llm_cfg), tool_access=cfg["recovery"].get("verifier_tool_access", True))
+
+
 def build_strategy(cfg: Dict[str, Any], name: str):
     """Recovery methods by config name (all get the oracle fault identity)."""
     from src.agents import Verifier
@@ -53,9 +62,8 @@ def build_strategy(cfg: Dict[str, Any], name: str):
         return FullRestart(cfg.get("environment", {}).get("restore_mode", "realistic"))
     if name == "full_restart_oracle":
         return FullRestart("oracle")
-    if name == "verify_all":
-        backend = build_backend(role_llm_cfg(cfg, "verifier"))
-        return VerifyAll(Verifier(backend, tool_access=cfg["recovery"].get("verifier_tool_access", True)))
+    if name in ("verify_all", "verify_all_self"):
+        return VerifyAll(build_verifier(cfg, self_verify=name == "verify_all_self"))
     raise KeyError(f"unknown recovery method {name}")
 
 

@@ -1,6 +1,6 @@
 # Experiment configuration (Phase 1)
 seed: 0
-repeats: 3
+repeats: 1                 # identical fault schedules across methods; consistency checked on a subset
 
 # LLM settings. `defaults` apply to every role; `roles.<name>` overrides per agent.
 # Usable chat models on tritonai-api.ucsd.edu ($/M tokens in/out):
@@ -53,7 +53,8 @@ faults:
 
 recovery:
   # full_restart uses environment.restore_mode; full_restart_oracle = ideal rollback upper bound
-  methods: [full_restart, full_restart_oracle, verify_all]   # dependency_aware added in Phase 2
+  # verify_all = strong verifier (llm.roles.verifier); verify_all_self = planner's model checks itself
+  methods: [full_restart, full_restart_oracle, verify_all, verify_all_self]   # dependency_aware in Phase 2
   verifier_tool_access: true   # verifier re-queries the registrar (report as information advantage)
   oracle_fault_identity: true
 

@@ -3,9 +3,7 @@ from __future__ import annotations
 
 import argparse
 
-from _common import ROOT, build_agent, build_workflow, load_config, load_tasks, run_jobs
-
-from src.agents import Verifier
+from _common import ROOT, build_verifier, build_workflow, load_config, load_tasks, run_jobs
 
 
 def main():
@@ -21,17 +19,16 @@ def main():
 
     cfg = load_config(args.config)
     tasks = load_tasks(cfg)[:args.limit]
-    verifier = None
+    verifiers = {}
     if args.verify:
-        v = build_agent(cfg, "verifier")
-        verifier = Verifier(v.llm, tool_access=cfg["recovery"].get("verifier_tool_access", True))
+        verifiers = {"verify_all": build_verifier(cfg), "verify_all_self": build_verifier(cfg, self_verify=True)}
     traces_dir = ROOT / cfg["output"]["traces_dir"]
 
     def run_one(job):
         task, rep, mode = job["task"], job["repeat"], job["mode"]
         wf = build_workflow(cfg)
         res = wf.run(task, injector=None, run_id=job["run_id"],
-                     verifier=verifier if mode == "verify_all" else None)
+                     verifier=verifiers.get(mode))
         res.tracer.save(traces_dir)
         calls = res.tracer.llm_calls
         row = {
@@ -48,7 +45,7 @@ def main():
             "researcher_exact": (res.outputs["researcher"].content == wf.env.__class__(
                 task["inputs"]["scenario"]).true_facts()) if "researcher" in res.outputs else None,
         }
-        if mode == "verify_all":
+        if mode in verifiers:
             row["false_alarms"] = sum(not v["ok"] for v in res.metrics["verdicts"])
             row["regenerated"] = res.metrics["regenerated"]
         return row
@@ -56,8 +53,9 @@ def main():
     jobs = []
     for rep in range(args.repeats or cfg["repeats"]):
         for task in tasks:
-            for mode in (["plain", "verify_all"] if verifier else ["plain"]):
-                rid = f"clean-{task['task_id']}-r{rep}" + ("" if mode == "plain" else "-verify")
+            for mode in ["plain"] + list(verifiers):
+                suffix = {"plain": "", "verify_all": "-verify", "verify_all_self": "-verify-self"}[mode]
+                rid = f"clean-{task['task_id']}-r{rep}{suffix}"
                 jobs.append({"run_id": rid, "task": task, "repeat": rep, "mode": mode})
     out = ROOT / cfg["output"]["results_dir"] / "baseline.jsonl"
     n = run_jobs(jobs, run_one, out, workers=args.workers, fresh=args.fresh)

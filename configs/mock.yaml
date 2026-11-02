@@ -54,7 +54,7 @@ faults:
 
 recovery:
   # full_restart uses environment.restore_mode; full_restart_oracle = ideal rollback upper bound
-  methods: [full_restart, full_restart_oracle, verify_all]   # dependency_aware added in Phase 2
+  methods: [full_restart, full_restart_oracle, verify_all, verify_all_self]
   verifier_tool_access: true   # verifier re-queries the registrar (report as information advantage)
   oracle_fault_identity: true
 

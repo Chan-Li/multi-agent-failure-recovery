@@ -64,3 +64,48 @@ def write_jsonl(rows: List[Dict[str, Any]], path: Path) -> None:
     with open(path, "w") as f:
         for r in rows:
             f.write(json.dumps(r, default=str) + "\n")
+
+
+def run_jobs(jobs: List[Dict[str, Any]], fn, out_path: Path, workers: int = 1,
+             fresh: bool = False) -> int:
+    """Run fn(job) -> row for every job, `workers` at a time, appending each
+    row to `out_path` as soon as it finishes. Resumable: jobs whose run_id is
+    already in the file are skipped (pass fresh=True to start over).
+    Returns the number of new rows."""
+    import threading
+    import time
+    import traceback
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    if fresh and out_path.exists():
+        out_path.unlink()
+    done = set()
+    if out_path.exists():
+        for line in out_path.read_text().splitlines():
+            if line.strip():
+                done.add(json.loads(line)["run_id"])
+    todo = [j for j in jobs if j["run_id"] not in done]
+    print(f"{len(jobs)} jobs, {len(done)} already done, {len(todo)} to run, {workers} workers", flush=True)
+    lock, n, t0 = threading.Lock(), 0, time.time()
+
+    def safe(job):
+        try:
+            return fn(job)
+        except Exception as e:  # never lose the whole batch to one bad job
+            return {"run_id": job["run_id"], "job_error": f"{type(e).__name__}: {e}",
+                    "traceback": traceback.format_exc()[-2000:]}
+
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = [pool.submit(safe, j) for j in todo]
+        for fut in as_completed(futures):
+            row = fut.result()
+            with lock:
+                with open(out_path, "a") as f:
+                    f.write(json.dumps(row, default=str) + "\n")
+                n += 1
+                if n % 10 == 0 or n == len(todo):
+                    el = time.time() - t0
+                    print(f"  {n}/{len(todo)} done, {el / 60:.1f} min elapsed, "
+                          f"~{el / n * (len(todo) - n) / 60:.1f} min left", flush=True)
+    return n

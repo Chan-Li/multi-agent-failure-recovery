@@ -1,0 +1,63 @@
+# Mock-backend copy of experiment.yaml (zero-cost structural runs, tests, development).
+# Experiment configuration (Phase 1)
+seed: 0
+repeats: 3
+
+# LLM settings. `defaults` apply to every role; `roles.<name>` overrides per agent.
+# Usable chat models on tritonai-api.ucsd.edu ($/M tokens in/out):
+#   api-glm-5.3-flash 0.15/0.50 | api-glm-5.3 1.20/3.25 | api-muse-glimmer-30b 0.20/0.40
+llm:
+  defaults:
+    backend: mock              # mock | ucsd (OpenAI-compatible, key in .env) | ollama
+    model: api-glm-5.3-flash
+    temperature: 0.0
+    max_tokens: 1024
+  roles:
+    # Main experiment: all core agents share one model (controlled variable).
+    researcher: {model: api-glm-5.3-flash}
+    planner:    {model: api-glm-5.3-flash}
+    executor:   {model: api-glm-5.3-flash}
+    # Verify-all baseline: stronger verifier by default; set to api-glm-5.3-flash
+    # for the self-verification comparison.
+    verifier:   {model: api-glm-5.3}
+
+# Optional ablations (Phase 2 / time permitting) — override `llm.roles` with:
+#   all_strong:     researcher/planner/executor -> api-glm-5.3
+#   strong_planner: planner -> api-glm-5.3
+#   other_family:   researcher/planner/executor -> api-muse-glimmer-30b
+
+environment:
+  domain: course_enrollment
+  restore_mode: realistic    # realistic (external events persist) | oracle (ideal upper bound)
+  competitors: true          # false = ablation: the world does not move while agents work
+
+workflow:
+  stages: [researcher, planner, executor]
+  tasks_file: data/tasks.json
+  stage_timeout_s: 60
+
+faults:
+  # Each entry is one fault schedule; identical schedules are reused across recovery methods.
+  # The concrete patch per task is chosen by experiments/gen_tasks.py (dependence search)
+  # and stored in data/tasks.json -> task["faults"][id]; runs skip tasks not in task["valid_faults"].
+  - {id: none, kind: none}
+  # --- accidental ---
+  - {id: researcher-wrong-prereq, kind: incorrect_result, category: accidental, stage: researcher, params: {type: wrong_prereq}}
+  - {id: researcher-wrong-seats,  kind: incorrect_result, category: accidental, stage: researcher, params: {type: seats_full}}
+  - {id: researcher-wrong-time,   kind: incorrect_result, category: accidental, stage: researcher, params: {type: time_shift}}
+  - {id: researcher-wrong-units,  kind: incorrect_result, category: accidental, stage: researcher, params: {type: max_units}}
+  - {id: researcher-stale-record, kind: stale_output,     category: accidental, stage: researcher, params: {type: stale_record}}
+  - {id: researcher-timeout,      kind: timeout,          category: accidental, stage: researcher}
+  # --- adversarial ---
+  - {id: researcher-injection,    kind: malicious_instruction, category: adversarial, stage: researcher, params: {type: notice}}
+  - {id: planner-injection,       kind: malicious_instruction, category: adversarial, stage: planner,    params: {type: plan_action}}
+
+recovery:
+  # full_restart uses environment.restore_mode; full_restart_oracle = ideal rollback upper bound
+  methods: [full_restart, full_restart_oracle, verify_all]   # dependency_aware added in Phase 2
+  verifier_tool_access: true   # verifier re-queries the registrar (report as information advantage)
+  oracle_fault_identity: true
+
+output:
+  results_dir: results/mock
+  traces_dir: results/mock/traces

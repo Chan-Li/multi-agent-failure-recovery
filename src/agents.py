@@ -189,7 +189,7 @@ class OpenAICompatLLM(LLMBackend):
 
     def __init__(self, model: str, temperature: float = 0.0, max_tokens: int = 1024,
                  base_url: Optional[str] = None, api_key: Optional[str] = None,
-                 timeout_s: float = 60.0):
+                 timeout_s: float = 120.0):
         import os
         from openai import OpenAI
         try:
@@ -201,6 +201,7 @@ class OpenAICompatLLM(LLMBackend):
             api_key=api_key or os.environ["OPENAI_API_KEY"],
             base_url=base_url or os.environ.get("OPENAI_BASE_URL"),
             timeout=timeout_s,
+            max_retries=5,          # rate limits / transient 5xx, with backoff
         )
         self.model = model
         self.temperature = temperature

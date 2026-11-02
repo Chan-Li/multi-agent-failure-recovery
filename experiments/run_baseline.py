@@ -20,10 +20,16 @@ def main():
             wf = build_workflow(cfg)
             res = wf.run(task, injector=None, run_id=f"clean-{task['task_id']}-r{rep}")
             res.tracer.save(traces_dir)
+            calls = res.tracer.llm_calls
             rows.append({
                 "run_id": res.run_id, "task_id": res.task_id, "repeat": rep,
-                "fault_id": "none", "success": res.success,
+                "difficulty": task.get("difficulty"), "fault_id": "none",
+                "success": res.success, "check_failures": res.metrics["check_failures"],
+                "final_sections": res.metrics["final_state"]["sections"],
                 "latency_s": res.latency_s, "error": res.error,
+                "prompt_tokens": sum(c.prompt_tokens for c in calls),
+                "completion_tokens": sum(c.completion_tokens for c in calls),
+                "parse_failures": [a.producer for a in res.outputs.values() if a.meta.get("parse_failed")],
             })
     out = ROOT / cfg["output"]["results_dir"] / "baseline.jsonl"
     write_jsonl(rows, out)

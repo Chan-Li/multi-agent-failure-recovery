@@ -77,6 +77,8 @@ def main():
     ap.add_argument("--faults", default=None, help="comma-separated fault ids to run (default all)")
     ap.add_argument("--workers", type=int, default=1)
     ap.add_argument("--fresh", action="store_true", help="discard existing results instead of resuming")
+    ap.add_argument("--methods", default=None, help="comma-separated recovery methods (default: config)")
+    ap.add_argument("--out", default="faults.jsonl", help="output file name in results_dir")
     args = ap.parse_args()
 
     cfg = load_config(args.config)
@@ -84,7 +86,8 @@ def main():
     specs = [s for s in load_fault_specs(cfg["faults"]) if s.kind != "none"
              and (args.faults is None or s.id in args.faults.split(","))]
     traces_dir = ROOT / cfg["output"]["traces_dir"]
-    strategies = {m: build_strategy(cfg, m) for m in cfg["recovery"]["methods"]}
+    methods = args.methods.split(",") if args.methods else cfg["recovery"]["methods"]
+    strategies = {m: build_strategy(cfg, m) for m in methods}
     jobs, skipped = [], 0
     for rep in range(args.repeats or cfg["repeats"]):
         for task in tasks:
@@ -95,7 +98,7 @@ def main():
                 jobs.append({"run_id": f"fault-{spec.id}-{task['task_id']}-r{rep}",
                              "task": task, "spec": spec, "repeat": rep})
     print(f"skipping {skipped} task x fault pairs with no dependence")
-    out = ROOT / cfg["output"]["results_dir"] / "faults.jsonl"
+    out = ROOT / cfg["output"]["results_dir"] / args.out
     n = run_jobs(jobs, lambda j: run_one(j, cfg, strategies, traces_dir, args.no_recovery),
                  out, workers=args.workers, fresh=args.fresh)
     print(f"wrote {n} new rows -> {out}")

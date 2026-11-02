@@ -83,9 +83,12 @@ class Workflow:
                 if injector:
                     art = injector.after_stage(stage, art)
                 if verifier is not None and stage in verify_stages:
-                    v = verifier.run(task, [art] + prev, self.env, tracer).content
+                    va = verifier.run(task, [art] + prev, self.env, tracer)
+                    v = va.content
                     verdicts.append({"stage": stage, "ok": v["ok"], "issues": v["issues"],
-                                     "artifact_faulty": art.faulty})
+                                     "artifact_faulty": art.faulty,
+                                     "upstream_faulty": any(p.faulty for p in prev),
+                                     "parse_failed": bool(va.meta.get("parse_failed"))})
                     if not v["ok"]:
                         regenerated.append(stage)
                         if hasattr(self.env, "advance_clock"):

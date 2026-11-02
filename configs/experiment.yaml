@@ -18,7 +18,7 @@ llm:
     executor:   {model: api-glm-5.3-flash}
     # Verify-all baseline: stronger verifier by default; set to api-glm-5.3-flash
     # for the self-verification comparison.
-    verifier:   {model: api-glm-5.3}
+    verifier:   {model: api-glm-5.3, max_tokens: 16000}   # reasoning + verdict on a large input
 
 # Optional ablations (Phase 2 / time permitting) — override `llm.roles` with:
 #   all_strong:     researcher/planner/executor -> api-glm-5.3

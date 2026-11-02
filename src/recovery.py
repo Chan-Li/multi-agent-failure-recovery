@@ -47,6 +47,8 @@ class RecoveryReport:
     false_alarms: int = 0                   # verify_all: clean artifacts rejected
     failures: List[str] = field(default_factory=list)
     final: Optional[RunResult] = None
+    caught_downstream: Optional[bool] = None   # verify_all: fault missed, its effect caught later
+    verifier_parse_failures: int = 0           # verify_all: unparseable verifier replies
 
     @property
     def clean_recovery(self) -> bool:
@@ -68,6 +70,8 @@ class RecoveryReport:
             f"{prefix}.detected": self.detected,
             f"{prefix}.false_alarms": self.false_alarms,
             f"{prefix}.failures": self.failures,
+            f"{prefix}.caught_downstream": self.caught_downstream,
+            f"{prefix}.verifier_parse_failures": self.verifier_parse_failures,
         }
 
 
@@ -146,21 +150,27 @@ class VerifyAll(RecoveryStrategy):
     artifact. Compared on the same task x fault pairs as FullRestart."""
     name = "verify_all"
 
-    def __init__(self, verifier: Agent):
+    def __init__(self, verifier: Agent, label: str = "verify_all"):
         self.verifier = verifier
+        self.label = label          # distinguishes variants in run ids / trace files
 
     def recover(self, workflow, task, faulty_run, faulty_artifact_id, spec=None):
         t0 = time.time()
         injector = FaultInjector(spec, task) if spec is not None else None
         run = workflow.run(task, injector=injector, reset_env=True, verifier=self.verifier,
-                           run_id=f"{faulty_run.run_id}-{self.name}")
+                           run_id=f"{faulty_run.run_id}-{self.label}")
         verdicts = run.metrics["verdicts"]
         detected = any(v["artifact_faulty"] and not v["ok"] for v in verdicts) if injector else None
-        false_alarms = sum(1 for v in verdicts if not v["artifact_faulty"] and not v["ok"])
+        # a rejection of a clean artifact built on a faulty one is a downstream
+        # catch, not a false alarm
+        false_alarms = sum(1 for v in verdicts if not v["artifact_faulty"]
+                           and not v.get("upstream_faulty") and not v["ok"])
+        caught_downstream = any(v.get("upstream_faulty") and not v["ok"] for v in verdicts)
+        parse_failures = sum(1 for v in verdicts if v.get("parse_failed"))
         faulty = next((a.artifact_id for a in run.tracer.artifacts.values() if a.faulty), None)
         irrev, harmful = fault_side_effects(run, task, faulty)
         return RecoveryReport(
-            method=self.name, recovered_success=run.success,
+            method=self.label, recovered_success=run.success,
             recomputed_stages=list(run.metrics["regenerated"]),
             retained_artifacts=[a for a in run.tracer.artifacts if not run.tracer.artifacts[a].faulty],
             irreversible_actions=irrev, harmful_irreversible=harmful,
@@ -169,6 +179,7 @@ class VerifyAll(RecoveryStrategy):
             extra_llm_tokens=tokens(run, "verify") + regeneration_tokens(run),
             detected=detected, false_alarms=false_alarms,
             failures=list(run.metrics["check_failures"]), final=run,
+            caught_downstream=caught_downstream, verifier_parse_failures=parse_failures,
         )
 
 

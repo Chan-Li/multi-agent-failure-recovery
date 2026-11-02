@@ -63,7 +63,7 @@ def build_strategy(cfg: Dict[str, Any], name: str):
     if name == "full_restart_oracle":
         return FullRestart("oracle")
     if name in ("verify_all", "verify_all_self"):
-        return VerifyAll(build_verifier(cfg, self_verify=name == "verify_all_self"))
+        return VerifyAll(build_verifier(cfg, self_verify=name == "verify_all_self"), label=name)
     raise KeyError(f"unknown recovery method {name}")
 
 

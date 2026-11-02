@@ -281,6 +281,18 @@ def main():
 
     base = pd.read_json(res_dir / "baseline.jsonl", lines=True)
     faults = pd.read_json(res_dir / "faults.jsonl", lines=True)
+    # re-runs of individual methods (run_faults.py --methods ... --out faults_<x>.jsonl)
+    # replace that method's columns for the same run ids
+    for patch in sorted(res_dir.glob("faults_*.jsonl")):
+        pf = pd.read_json(patch, lines=True)
+        if "job_error" in pf:
+            pf = pf[pf["job_error"].isna()]
+        cols = [c for c in pf.columns if "." in c]
+        if not cols:
+            continue
+        faults = faults.drop(columns=[c for c in cols if c in faults.columns])
+        faults = faults.merge(pf[["run_id"] + cols], on="run_id", how="left")
+        print(f"merged {len(pf)} rows of {sorted({c.split('.')[0] for c in cols})} from {patch.name}")
     if "job_error" in faults:
         bad = faults["job_error"].notna()
         print(f"dropping {bad.sum()} rows that crashed: {faults.loc[bad, 'job_error'].unique()[:3]}")

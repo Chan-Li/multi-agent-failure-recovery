@@ -301,6 +301,19 @@ class CourseEnrollmentEnv(Environment):
             "clock": self.state["clock"],
         }
 
+    def true_facts(self, codes: Optional[List[str]] = None) -> Dict[str, Any]:
+        """Ground-truth fact sheet (researcher format) without tracing. Used
+        by the solver, task generator, checker and mock verifier."""
+        codes = sorted(self.state["catalog"]) if codes is None else codes
+        courses = {}
+        for code in codes:
+            c = _get_course(self, code)
+            if c.get("ok"):
+                courses[code] = {k: c[k] for k in ("title", "units", "prereqs", "satisfies", "sections")}
+        rec = _get_student_record(self)
+        return {"student": {k: rec[k] for k in ("completed", "enrolled_sections", "units", "max_units")},
+                "courses": courses}
+
     # --- tools -----------------------------------------------------------
     def _register_tools(self) -> None:
         R = self.register_tool

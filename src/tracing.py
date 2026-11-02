@@ -28,6 +28,7 @@ class Artifact:
     state_reads: List[str] = field(default_factory=list)  # shared-state keys read
     faulty: bool = False               # ground truth: set by the injector
     fault_id: Optional[str] = None
+    meta: Dict[str, Any] = field(default_factory=dict)  # e.g. parse_failed, fallback
     created_at: float = field(default_factory=time.time)
 
 

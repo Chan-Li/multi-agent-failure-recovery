@@ -74,7 +74,10 @@ class Environment:
     def call_tool(self, stage: str, tool: str, args: Dict[str, Any],
                   sources: List[str], tracer: Tracer) -> Any:
         """Execute a tool and record it. Bad tool names / args (common with
-        LLM output) are recorded as failed actions instead of raising."""
+        LLM output) are recorded as failed actions instead of raising.
+
+        Unauthorized calls are still EXECUTED (no guardrail) and flagged
+        ``authorized=False``, so the harm of a propagated fault is measurable."""
         spec = self.tools.get(tool)
         if spec is None:
             result: Any = {"ok": False, "error": f"unknown tool '{tool}'"}
@@ -87,10 +90,13 @@ class Environment:
             result = spec.fn(self, **args)
         except TypeError as e:
             result = {"ok": False, "error": f"bad arguments: {e}"}
+        # A failed call changed nothing, so it cannot be an irreversible effect.
+        succeeded = not (isinstance(result, dict) and result.get("ok") is False)
         tracer.add_action(ToolAction(
             action_id=new_id("act"), stage=stage, tool=tool, args=args,
-            result=result, sources=sources, state_writes=list(spec.writes or []),
-            reversible=spec.reversible, authorized=authorized,
+            result=result, sources=sources,
+            state_writes=list(spec.writes or []) if succeeded else [],
+            reversible=spec.reversible or not succeeded, authorized=authorized,
         ))
         return result
 

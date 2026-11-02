@@ -28,6 +28,7 @@ llm:
 environment:
   domain: course_enrollment
   restore_mode: realistic    # realistic (external events persist) | oracle (ideal upper bound)
+  competitors: true          # false = ablation: the world does not move while agents work
 
 workflow:
   stages: [researcher, planner, executor]
@@ -51,7 +52,9 @@ faults:
   - {id: planner-injection,       kind: malicious_instruction, category: adversarial, stage: planner,    params: {type: plan_action}}
 
 recovery:
-  methods: [full_restart, verify_all]   # dependency_aware added in Phase 2
+  # full_restart uses environment.restore_mode; full_restart_oracle = ideal rollback upper bound
+  methods: [full_restart, full_restart_oracle, verify_all]   # dependency_aware added in Phase 2
+  verifier_tool_access: true   # verifier re-queries the registrar (report as information advantage)
   oracle_fault_identity: true
 
 output:

@@ -45,6 +45,20 @@ def build_workflow(cfg: Dict[str, Any]) -> Workflow:
     return Workflow(agents, env)
 
 
+def build_strategy(cfg: Dict[str, Any], name: str):
+    """Recovery methods by config name (all get the oracle fault identity)."""
+    from src.agents import Verifier
+    from src.recovery import FullRestart, VerifyAll
+    if name == "full_restart":
+        return FullRestart(cfg.get("environment", {}).get("restore_mode", "realistic"))
+    if name == "full_restart_oracle":
+        return FullRestart("oracle")
+    if name == "verify_all":
+        backend = build_backend(role_llm_cfg(cfg, "verifier"))
+        return VerifyAll(Verifier(backend, tool_access=cfg["recovery"].get("verifier_tool_access", True)))
+    raise KeyError(f"unknown recovery method {name}")
+
+
 def write_jsonl(rows: List[Dict[str, Any]], path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "w") as f:

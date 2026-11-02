@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from .agents import Agent
 from .environment import Environment
@@ -47,16 +47,30 @@ class Workflow:
         self.env = env
 
     def run(self, task: Dict[str, Any], injector: Optional[FaultInjector] = None,
-            run_id: Optional[str] = None, reset_env: bool = True) -> RunResult:
-        """reset_env=False continues in the current world (e.g. after a
-        realistic restore during recovery) instead of loading a fresh one."""
+            run_id: Optional[str] = None, reset_env: bool = True,
+            verifier: Optional[Agent] = None,
+            verify_stages: Tuple[str, ...] = ("researcher", "planner")) -> RunResult:
+        """Run every stage in order.
+
+        reset_env=False continues in the current world (e.g. after a realistic
+        restore during recovery) instead of loading a fresh one.
+
+        With a ``verifier`` (always-verify baseline), each artifact of a stage
+        in ``verify_stages`` is checked before it is passed on; a rejected
+        artifact is regenerated once (the injected fault is transient, so the
+        regeneration is clean) and the regeneration costs one more world tick.
+        Executor output is not verified: its actions have already happened.
+        """
         run_id = run_id or new_id("run")
         if reset_env:
             self.env.reset(task.get("inputs", {}).get("scenario"))
+        start_snapshot = self.env.snapshot(f"start-{run_id}")
         tracer = Tracer(run_id)
         outputs: Dict[str, Artifact] = {}
         prev: List[Artifact] = []
         error = None
+        verdicts: List[Dict[str, Any]] = []
+        regenerated: List[str] = []
         t0 = time.time()
 
         for agent in self.agents:
@@ -68,6 +82,16 @@ class Workflow:
                 art = agent.run(task, prev, self.env, tracer)
                 if injector:
                     art = injector.after_stage(stage, art)
+                if verifier is not None and stage in verify_stages:
+                    v = verifier.run(task, [art] + prev, self.env, tracer).content
+                    verdicts.append({"stage": stage, "ok": v["ok"], "issues": v["issues"],
+                                     "artifact_faulty": art.faulty})
+                    if not v["ok"]:
+                        regenerated.append(stage)
+                        if hasattr(self.env, "advance_clock"):
+                            self.env.advance_clock()
+                        art = agent.run(task, prev, self.env, tracer)
+                        art.meta["regenerated_after_verify"] = True
                 tracer.add_artifact(art)
             except Exception as e:  # timeouts, agent failures
                 error = f"{stage}: {type(e).__name__}: {e}"
@@ -87,12 +111,15 @@ class Workflow:
         failures = self._check(task, tracer)
         if error:
             failures = [f"error: {error}"] + failures
+        metrics: Dict[str, Any] = {"check_failures": failures, "final_state": self.env.summary(),
+                                   "start_snapshot": start_snapshot}
+        if verifier is not None:
+            metrics.update(verdicts=verdicts, regenerated=regenerated)
         return RunResult(
             run_id=run_id, task_id=task["task_id"],
             fault_id=injector.spec.id if injector else "none",
             success=not failures, outputs=outputs, tracer=tracer,
-            latency_s=time.time() - t0, error=error,
-            metrics={"check_failures": failures, "final_state": self.env.summary()},
+            latency_s=time.time() - t0, error=error, metrics=metrics,
         )
 
     def _next_stage(self, agent: Agent) -> Optional[str]:

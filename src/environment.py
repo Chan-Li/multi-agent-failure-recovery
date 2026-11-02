@@ -163,8 +163,9 @@ class CourseEnrollmentEnv(Environment):
     READ_TOOLS = ["search_courses", "get_course", "get_student_record"]
     WRITE_TOOLS = ["enroll", "drop", "join_waitlist", "leave_waitlist", "send_email"]
 
-    def __init__(self, scenario: Optional[Dict[str, Any]] = None):
+    def __init__(self, scenario: Optional[Dict[str, Any]] = None, competitors: bool = True):
         super().__init__()
+        self.competitors_enabled = competitors   # ablation: a world that does not move
         self._register_tools()
         self.reset(scenario or DEFAULT_SCENARIO)
 
@@ -196,7 +197,8 @@ class CourseEnrollmentEnv(Environment):
             "allowed_recipients": list(sc.get("policy", {}).get("allowed_recipients", [])),
             "droppable": list(sc.get("policy", {}).get("droppable", [])),
         }
-        self.competitors = sorted(sc.get("competitors", []), key=lambda c: c["arrive_at"])
+        self.competitors = (sorted(sc.get("competitors", []), key=lambda c: c["arrive_at"])
+                            if self.competitors_enabled else [])
         self.external_events = []
         self._snapshots = {}
 
@@ -471,4 +473,4 @@ def build_environment(config: Dict[str, Any], scenario: Optional[Dict[str, Any]]
     domain = config.get("environment", {}).get("domain", "course_enrollment")
     if domain != "course_enrollment":
         raise NotImplementedError(f"unknown domain {domain}")
-    return CourseEnrollmentEnv(scenario)
+    return CourseEnrollmentEnv(scenario, competitors=config.get("environment", {}).get("competitors", True))

@@ -3,11 +3,13 @@ baseline recovery methods (full restart, verify-all) under the same schedule."""
 from __future__ import annotations
 
 import argparse
+import copy
 
-from _common import ROOT, build_workflow, load_config, load_tasks, write_jsonl
+from _common import ROOT, build_strategy, build_workflow, load_config, load_tasks, write_jsonl
 
 from src.fault_injection import FaultInjector, load_fault_specs
-from src.recovery import STRATEGIES
+from src.recovery import fault_side_effects
+from src.workflow import Workflow
 
 
 def propagation_metrics(res) -> dict:
@@ -40,6 +42,7 @@ def main():
     tasks = load_tasks(cfg)[:args.limit]
     specs = load_fault_specs(cfg["faults"])
     traces_dir = ROOT / cfg["output"]["traces_dir"]
+    strategies = {m: build_strategy(cfg, m) for m in cfg["recovery"]["methods"]}
     rows, skipped = [], 0
     for rep in range(cfg["repeats"]):
         for task in tasks:
@@ -64,17 +67,20 @@ def main():
                     "latency_s": res.latency_s, "error": res.error,
                     **propagation_metrics(res),
                 }
-                # Recovery baselines (oracle fault identity)
-                faulty_ids = row["faulty_artifacts"]
+                irrev, harmful = fault_side_effects(res, task, row["faulty_artifacts"][0]
+                                                    if row["faulty_artifacts"] else None)
+                row["fault_irreversible"] = len(irrev)
+                row["fault_harmful_irreversible"] = len(harmful)
+                # Recovery baselines (oracle fault identity). Each method starts
+                # from its own copy of the world exactly as the faulty run left it.
+                faulty_id = row["faulty_artifacts"][0] if row["faulty_artifacts"] else None
                 for m in ([] if args.no_recovery else cfg["recovery"]["methods"]):
-                    if not faulty_ids:
-                        continue
-                    rep_ = STRATEGIES[m]().recover(wf, task, res, faulty_ids[0])
-                    row[f"{m}.success"] = rep_.recovered_success
-                    row[f"{m}.recomputed"] = rep_.recomputed_stages
-                    row[f"{m}.latency_s"] = rep_.recovery_latency_s
-                    row[f"{m}.extra_tokens"] = rep_.extra_llm_tokens
-                    row[f"{m}.irreversible"] = len(rep_.irreversible_actions)
+                    if m == "verify_all" and spec.kind == "timeout":
+                        continue      # verification cannot help a stage that never returns
+                    wf_m = Workflow(wf.agents, copy.deepcopy(wf.env))
+                    rep_ = strategies[m].recover(wf_m, task, res, faulty_id, spec)
+                    rep_.final.tracer.save(traces_dir)
+                    row.update(rep_.to_row(m))
                 rows.append(row)
     out = ROOT / cfg["output"]["results_dir"] / "faults.jsonl"
     write_jsonl(rows, out)

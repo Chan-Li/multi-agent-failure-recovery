@@ -42,9 +42,9 @@
 \lstset{basicstyle=\ttfamily\footnotesize,breaklines=true,frame=single,columns=fullflexible}
 
 \title{Failure Propagation and Recovery in a Multi-Agent Course-Enrollment Assistant\\
-\large CSE291 Project, Option 5 --- Phase 1 Report}
-\author{Chan Li \todo{add teammates, if any}}
-\date{\todo{date}}
+\large CSE291 Project, Option 5: Phase 1 Report}
+\author{Chan Li}
+\date{\today}
 
 \begin{document}
 \maketitle
@@ -54,15 +54,15 @@
 Multi-agent LLM systems hand intermediate results to one another through
 messages, delegated tasks and shared state, so one agent's wrong or malicious
 output can steer the decisions of every agent after it. We build a
-researcher--planner--executor assistant that enrolls students in courses on a
+researcher, planner and executor assistant that enrolls students in courses on a
 simulated university registrar, a world with \emph{shared state} (a seat pool
 contested by other students) and \emph{irreversible actions} (dropping a seat
 that a waitlisted student immediately takes; sending an email). We inject
-eight kinds of faults --- six accidental (wrong prerequisites, seat counts,
-times and unit caps; a stale student record; a timeout) and two adversarial
-(a forged registrar notice; a poisoned plan) --- into 164 task--fault pairs over
-20 students, each selected so that the task outcome actually depends on the
-faulty result. We trace every message, artifact, tool action and dependency,
+eight kinds of faults into 164 task and fault pairs over 20 students. Six are
+accidental: wrong prerequisites, seat counts, times and unit caps, a stale
+student record, and a timeout. Two are adversarial: a forged registrar notice
+and a poisoned plan. Every pair is selected so that the task outcome actually
+depends on the faulty result. We trace every message, artifact, tool action and dependency,
 and measure how far each fault propagates. We then compare two recovery
 baselines: full restart (with a realistic and an idealized rollback of the
 world) and always-verify (with a strong and a self-verifying verifier).
@@ -83,8 +83,8 @@ the world may already have changed in ways that cannot be undone.
 results support efficient recovery while preserving correct and safe task
 execution?} Phase~1 answers the prerequisite questions: how do faults
 propagate in a realistic workflow, what do they cost, and how well do the two
-standard recovery baselines --- restarting everything, or verifying every
-intermediate result --- actually work when the world does not roll back with
+standard recovery baselines (restarting everything, or verifying every
+intermediate result) actually work when the world does not roll back with
 the agents?
 
 \paragraph{Contributions (Phase 1).}
@@ -117,7 +117,7 @@ recover. \textbf{A2ASecBench}~\cite{a2asecbench} studies attacks on the
 agent-to-agent protocol with programmatic success checks. Both focus on
 \emph{detection/robustness}. We focus on \emph{propagation and recovery}, and
 on a stateful world in which some effects cannot be rolled back.
-\todo{1--2 sentences on checkpoint/rollback and provenance in distributed systems, if desired}
+\todo{one or two sentences on checkpoint/rollback and provenance in distributed systems, if desired}
 
 % -----------------------------------------------------------------------------
 \section{System}
@@ -163,8 +163,8 @@ Afterwards email my advisor a short summary.''}
 
 We chose this domain because it has the three properties the project asks for:
 (i) outcomes are \emph{checkable by code} (is every requirement covered, is the
-schedule legal?); (ii) it has \emph{shared state} --- a seat pool contested by
-other students; and (iii) it has \emph{irreversible actions} --- a dropped seat
+schedule legal?); (ii) it has \emph{shared state}, a seat pool contested by
+other students; and (iii) it has \emph{irreversible actions}: a dropped seat
 goes to the head of the waitlist immediately, and a sent email cannot be
 recalled. The catalog is \emph{fictional} (codes such as \code{SYS~367},
 \code{THY~434}) so the model cannot correct a wrong fact from prior knowledge;
@@ -184,9 +184,9 @@ and a world clock. Agents act only through tools (\cref{tab:tools}).
 \toprule
 Tool & Used by & Reversible & Notes / authorization policy \\
 \midrule
-\code{get\_student\_record} & researcher, verifier & --- & read only \\
-\code{search\_courses} & researcher, verifier & --- & read only \\
-\code{get\_course} & researcher, verifier & --- & read only; includes open seats \\
+\code{get\_student\_record} & researcher, verifier & n/a & read only \\
+\code{search\_courses} & researcher, verifier & n/a & read only \\
+\code{get\_course} & researcher, verifier & n/a & read only; includes open seats \\
 \code{enroll} & executor & yes & registrar enforces prereqs, conflicts, unit cap, seats \\
 \code{join\_waitlist}, \code{leave\_waitlist} & executor & yes & \\
 \code{drop} & executor & \textbf{no} & seat goes to waitlist head at once; authorized only for courses the student allows \\
@@ -228,7 +228,7 @@ that exchange JSON artifacts with fixed schemas (\cref{app:schemas}).
         the LLM rewrites the raw results into a \emph{fact sheet}. If its
         reply cannot be parsed, it falls back to the raw results and flags it.
   \item[Planner.] Sees \emph{only} the goal, the requirements, the student's
-        constraints and the fact sheet --- no tool access. It outputs one
+        constraints and the fact sheet, with no tool access. It outputs one
         \emph{sub-plan per requirement} (course, section, drops it needs) plus
         other actions (the advisor email). Independent sub-plans are what will
         let Phase~2 keep unaffected work.
@@ -323,7 +323,7 @@ recovery}. We therefore control dependence at two levels:
         first patch that changes the outside world (final schedule, emails or
         write actions) relative to the clean run, preferring one that makes
         the task fail. Pairs with no such patch are dropped: 164 of 168
-        task--fault pairs remain (stale record is meaningful for 17 of 21
+        task and fault pairs remain (stale record is meaningful for 17 of 21
         tasks).
   \item \textbf{Measurement (after running).} Every real-model fault run is
         compared with the clean run of the same student; a fault the model
@@ -355,7 +355,7 @@ downstream of it); \emph{end-to-end latency}.
 
 \paragraph{Recovery metrics.} \emph{recovered success} (goal met in the final
 world); \emph{clean recovery} (goal met \textbf{and} no harmful side effect of
-the fault left in the world --- recomputation is not counted as complete
+the fault left in the world; recomputation is not counted as complete
 recovery when, e.g., a leaked email persists); \emph{recomputed stages};
 \emph{retained artifacts}; \emph{extra LLM tokens}; \emph{recovery latency};
 \emph{persisted events} (world events the restore could not undo); for
@@ -390,7 +390,7 @@ copy of the world exactly as the faulty run left it.
   \item Models via the UCSD OpenAI-compatible API: agents
         \code{api-glm-5.3-flash} (\$0.15/\$0.50 per M input/output tokens),
         strong verifier \code{api-glm-5.3} (\$1.20/\$3.25); temperature 0.
-  \item 21 tasks; 8 fault types; 164 dependent task--fault pairs; each fault
+  \item 21 tasks; 8 fault types; 164 dependent task and fault pairs; each fault
         run followed by 4 recovery methods.
   \item One repeat per configuration (the project requires identical fault
         schedules across methods, not repetition). \todo{optional: consistency
@@ -414,7 +414,7 @@ copy of the world exactly as the faulty run left it.
 \toprule
 Mode & Success & Latency / run & Tokens / run & False alarms \\
 \midrule
-No verification            & 21/21 & 20\,s  & 13.0k & --- \\
+No verification            & 21/21 & 20\,s  & 13.0k & n/a \\
 Always-verify (strong)     & 21/21 & 194\,s & 29.8k & 0 \\
 Always-verify (self)       & 21/21 & 58\,s  & 26.2k & 0 \\
 \bottomrule
@@ -479,7 +479,7 @@ through the workflow's structure.}
 \label{fig:cost}
 \end{figure}
 \todo{Table from \code{recovery\_overall.csv}: per method, accidental vs.\
-adversarial --- success, clean recovery, recomputed stages, extra tokens,
+adversarial: success, clean recovery, recomputed stages, extra tokens,
 latency, harmful irreversible, persisted events, detection.}
 
 \subsection{Worked example: one fault, end to end}
@@ -499,7 +499,7 @@ could not undo.}
         was benign (the task had in fact succeeded), restarting rolls back
         valid enrollments; competitors take those seats meanwhile (mock,
         wrong-seats: 0.90 $\rightarrow$ 0.57). Restart throws away valid
-        work --- the motivation for selective recovery.
+        work, which motivates selective recovery.
   \item \textbf{Recomputation cannot undo irreversible effects.} Unneeded drops
         (seat taken by the waitlist) and leaked emails persist; realistic
         restart never achieves a clean recovery after an injection, while the
@@ -518,7 +518,7 @@ could not undo.}
 repeat; the strong verifier re-queries the registrar, an information advantage
 the planner does not have; the mock-based dependence search can choose
 faults that a real model's different (equally valid) choices make irrelevant
---- which is why we also measure dependence per run.
+which is why we also measure dependence per run.
 
 % -----------------------------------------------------------------------------
 \section{Plan for Phase 2: Dependency-Aware Invalidation}

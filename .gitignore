@@ -7,3 +7,10 @@ results/*
 !results/.gitkeep
 *.log
 logs/
+reports/**/*.aux
+reports/**/*.log
+reports/**/*.fls
+reports/**/*.fdb_latexmk
+reports/**/*.bbl
+reports/**/*.blg
+reports/**/*.out

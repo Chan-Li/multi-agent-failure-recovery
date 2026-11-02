@@ -1,0 +1,570 @@
+% =============================================================================
+% CSE291 Option 5 -- Failure Propagation and Recovery in Multi-Agent Systems
+% Phase 1 report: fault injection and propagation measurement
+%
+% Build:   cd reports/phase1/report && latexmk -pdf main.tex
+% Figures/tables are read from the analysis output folder (../), produced by
+%   python experiments/analyze.py            (real model  -> reports/phase1/)
+%   python experiments/analyze.py --results results/mock --out reports/phase1/mock
+% Missing figures render as a placeholder box, so the frame always compiles.
+%
+% Markers:  \todo{...}  = must be filled in before submission (shown in red)
+%           \note{...}  = explanation for the authors, delete before submission
+% =============================================================================
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{microtype}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{multirow}
+\usepackage{graphicx}
+\usepackage{xcolor}
+\usepackage{enumitem}
+\usepackage{listings}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,fit,backgrounds}
+\usepackage[hidelinks]{hyperref}
+\usepackage[capitalise,noabbrev]{cleveref}
+
+\newcommand{\todo}[1]{\textcolor{red}{[\textbf{TODO:} #1]}}
+\newcommand{\note}[1]{\textcolor{blue!60!black}{[\textit{Note:} #1]}}
+\newcommand{\code}[1]{\texttt{\small #1}}
+\newcommand{\figdir}{../}
+\newcommand{\mockdir}{../mock/}
+% \maybefig{path}{width}: include if it exists, else a placeholder
+\newcommand{\maybefig}[2]{%
+  \IfFileExists{#1}{\includegraphics[width=#2]{#1}}{%
+    \fbox{\parbox[c][4cm][c]{#2}{\centering\small\textcolor{red}{figure not generated yet:}\\\texttt{\detokenize{#1}}}}}}
+
+\lstset{basicstyle=\ttfamily\footnotesize,breaklines=true,frame=single,columns=fullflexible}
+
+\title{Failure Propagation and Recovery in a Multi-Agent Course-Enrollment Assistant\\
+\large CSE291 Project, Option 5 --- Phase 1 Report}
+\author{Chan Li \todo{add teammates, if any}}
+\date{\todo{date}}
+
+\begin{document}
+\maketitle
+
+% -----------------------------------------------------------------------------
+\begin{abstract}
+Multi-agent LLM systems hand intermediate results to one another through
+messages, delegated tasks and shared state, so one agent's wrong or malicious
+output can steer the decisions of every agent after it. We build a
+researcher--planner--executor assistant that enrolls students in courses on a
+simulated university registrar, a world with \emph{shared state} (a seat pool
+contested by other students) and \emph{irreversible actions} (dropping a seat
+that a waitlisted student immediately takes; sending an email). We inject
+eight kinds of faults --- six accidental (wrong prerequisites, seat counts,
+times and unit caps; a stale student record; a timeout) and two adversarial
+(a forged registrar notice; a poisoned plan) --- into 164 task--fault pairs over
+20 students, each selected so that the task outcome actually depends on the
+faulty result. We trace every message, artifact, tool action and dependency,
+and measure how far each fault propagates. We then compare two recovery
+baselines: full restart (with a realistic and an idealized rollback of the
+world) and always-verify (with a strong and a self-verifying verifier).
+\todo{one-sentence headline result from the real-model runs}.
+\end{abstract}
+
+% -----------------------------------------------------------------------------
+\section{Introduction}
+\label{sec:intro}
+
+\paragraph{Problem.} In a multi-agent workflow, an agent rarely checks where
+its inputs came from. If a researcher agent reports a fabricated fact, a
+planner builds on it and an executor acts on the plan. By the time the fault is
+noticed, two things have happened: later intermediate results depend on it, and
+the world may already have changed in ways that cannot be undone.
+
+\paragraph{Core question.} \emph{Can tracking dependencies between agent
+results support efficient recovery while preserving correct and safe task
+execution?} Phase~1 answers the prerequisite questions: how do faults
+propagate in a realistic workflow, what do they cost, and how well do the two
+standard recovery baselines --- restarting everything, or verifying every
+intermediate result --- actually work when the world does not roll back with
+the agents?
+
+\paragraph{Contributions (Phase 1).}
+\begin{enumerate}[leftmargin=*,itemsep=2pt]
+  \item A three-agent LLM workflow on a registrar simulator with
+        programmatically checkable outcomes, shared state, competing users
+        and irreversible actions (\cref{sec:system}).
+  \item A provenance tracer that records messages, artifacts, tool actions and
+        LLM calls, and links every artifact and action to the artifacts it was
+        derived from (\cref{sec:tracing}).
+  \item A fault-injection harness with eight fault types, separating
+        accidental and adversarial faults, plus a \emph{dependence search}
+        that only keeps faults the task outcome actually depends on
+        (\cref{sec:faults}).
+  \item Measurements of clean success, propagation, unauthorized and
+        irreversible actions, wasted work and latency, and a comparison of
+        full restart and always-verify under identical fault schedules
+        (\cref{sec:results}).
+\end{enumerate}
+
+% -----------------------------------------------------------------------------
+\section{Background and Related Work}
+\label{sec:related}
+\note{Keep short. Position against the two suggested resources.}
+
+\textbf{TAMAS}~\cite{tamas} benchmarks threats to multi-agent systems
+(e.g.\ Byzantine agents, indirect prompt injection) across several domains,
+with mostly stateless tools; it measures whether attacks succeed, not how to
+recover. \textbf{A2ASecBench}~\cite{a2asecbench} studies attacks on the
+agent-to-agent protocol with programmatic success checks. Both focus on
+\emph{detection/robustness}. We focus on \emph{propagation and recovery}, and
+on a stateful world in which some effects cannot be rolled back.
+\todo{1--2 sentences on checkpoint/rollback and provenance in distributed systems, if desired}
+
+% -----------------------------------------------------------------------------
+\section{System}
+\label{sec:system}
+
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}[
+  node distance=1.4cm and 1.1cm,
+  agent/.style={draw, rounded corners, fill=blue!8, minimum width=2.3cm, minimum height=0.9cm, align=center, font=\small},
+  art/.style={draw, fill=gray!8, minimum width=1.6cm, minimum height=0.6cm, align=center, font=\footnotesize},
+  world/.style={draw, rounded corners, fill=orange!10, minimum width=11.5cm, minimum height=0.9cm, align=center, font=\small},
+  arr/.style={-{Stealth[length=2mm]}, thick},
+  inj/.style={-{Stealth[length=2mm]}, thick, red!70!black, dashed}]
+  \node[agent] (R) {Researcher};
+  \node[art, right=of R] (F) {facts};
+  \node[agent, right=of F] (P) {Planner};
+  \node[art, right=of P] (L) {plan};
+  \node[agent, right=of L] (E) {Executor};
+  \node[world, below=1.3cm of F.south west, anchor=north west, xshift=-1.9cm] (W)
+     {Registrar world: catalog, seat pool, waitlists, student record, outbox, clock, competing students};
+  \draw[arr] (R) -- (F); \draw[arr] (F) -- (P); \draw[arr] (P) -- (L); \draw[arr] (L) -- (E);
+  \draw[arr] (W.north -| R) -- node[left, font=\scriptsize]{read tools} (R);
+  \draw[arr] (E) -- node[right, font=\scriptsize]{write tools} (W.north -| E);
+  \node[font=\scriptsize, red!70!black, above=0.35cm of F] (i1) {fault injection};
+  \draw[inj] (i1) -- (F);
+  \node[font=\scriptsize, red!70!black, above=0.35cm of L] (i2) {fault injection};
+  \draw[inj] (i2) -- (L);
+\end{tikzpicture}
+\caption{Workflow. Each arrow between agents is a traced message carrying one
+artifact; every artifact records its sources and every tool action records the
+artifact that caused it. The planner cannot query the registrar (information
+bottleneck), so it depends on the researcher's facts.}
+\label{fig:workflow}
+\end{figure}
+
+\subsection{Task domain: course enrollment}
+\label{sec:domain}
+A student asks the assistant: \emph{``Please enroll me in one theory course,
+one systems course and one AI course for next term. I may drop ELC~131 or
+ELC~152 if that is needed to fit them, but do not drop anything unnecessarily.
+Afterwards email my advisor a short summary.''}
+
+We chose this domain because it has the three properties the project asks for:
+(i) outcomes are \emph{checkable by code} (is every requirement covered, is the
+schedule legal?); (ii) it has \emph{shared state} --- a seat pool contested by
+other students; and (iii) it has \emph{irreversible actions} --- a dropped seat
+goes to the head of the waitlist immediately, and a sent email cannot be
+recalled. The catalog is \emph{fictional} (codes such as \code{SYS~367},
+\code{THY~434}) so the model cannot correct a wrong fact from prior knowledge;
+the workflow must genuinely depend on the researcher's output.
+
+\subsection{Environment (registrar simulator)}
+\label{sec:env}
+The world state contains the catalog (courses with units, prerequisites,
+which requirement they satisfy, and sections with days/times/capacity), the
+\emph{seat pool} (who is enrolled in each section), waitlists, the acting
+student's record (completed courses, current sections, unit cap), an outbox
+and a world clock. Agents act only through tools (\cref{tab:tools}).
+
+\begin{table}[t]
+\centering\small
+\begin{tabularx}{\linewidth}{l l c X}
+\toprule
+Tool & Used by & Reversible & Notes / authorization policy \\
+\midrule
+\code{get\_student\_record} & researcher, verifier & --- & read only \\
+\code{search\_courses} & researcher, verifier & --- & read only \\
+\code{get\_course} & researcher, verifier & --- & read only; includes open seats \\
+\code{enroll} & executor & yes & registrar enforces prereqs, conflicts, unit cap, seats \\
+\code{join\_waitlist}, \code{leave\_waitlist} & executor & yes & \\
+\code{drop} & executor & \textbf{no} & seat goes to waitlist head at once; authorized only for courses the student allows \\
+\code{send\_email} & executor & \textbf{no} & authorized only to the student's advisor \\
+\bottomrule
+\end{tabularx}
+\caption{Registrar tools. Unauthorized calls are \emph{executed} and flagged
+(no guardrail), so the harm of a propagated fault is measurable. A failed call
+changes nothing and is therefore not counted as irreversible.}
+\label{tab:tools}
+\end{table}
+
+\paragraph{A world that keeps moving.} Between stages the world clock
+advances. \emph{Competing students} arrive at scheduled times and take the
+seats the correct plan needs. In our tasks they arrive just after a clean run
+would finish ($t \ge 3$), so they never harm a clean run but do harm a slow or
+late recovery. \texttt{environment.competitors=false} gives a static-world
+ablation.
+
+\paragraph{Snapshots and the ``world does not roll back'' problem.} The
+environment can snapshot and restore its state. Following the project's
+challenge (rolling back an LLM's state does not roll back the world), restore
+has two modes:
+\begin{itemize}[leftmargin=*,itemsep=1pt]
+  \item \textbf{realistic}: restore the snapshot, then re-apply every
+        \emph{external event} logged since (our drops, the waitlisted student
+        who took the seat, sent emails, competitor arrivals); the clock never
+        goes back. This is what a real registrar allows.
+  \item \textbf{oracle}: restore everything. Physically impossible; used as an
+        upper bound to isolate the cost of irreversibility.
+\end{itemize}
+
+\subsection{Agents}
+\label{sec:agents}
+All three core agents are LLM agents (\code{api-glm-5.3-flash}, temperature 0)
+that exchange JSON artifacts with fixed schemas (\cref{app:schemas}).
+\begin{description}[leftmargin=*,itemsep=2pt]
+  \item[Researcher.] Code calls the read tools (student record, every course);
+        the LLM rewrites the raw results into a \emph{fact sheet}. If its
+        reply cannot be parsed, it falls back to the raw results and flags it.
+  \item[Planner.] Sees \emph{only} the goal, the requirements, the student's
+        constraints and the fact sheet --- no tool access. It outputs one
+        \emph{sub-plan per requirement} (course, section, drops it needs) plus
+        other actions (the advisor email). Independent sub-plans are what will
+        let Phase~2 keep unaffected work.
+  \item[Executor.] The LLM translates the plan into an ordered list of tool
+        calls; code runs them through the registrar, tagging each action with
+        the plan it came from. It is instructed to skip actions that violate
+        the goal (it can \emph{refuse}).
+  \item[Verifier] (always-verify baseline only). Checks an artifact before it
+        is passed on, re-querying the registrar. Strong variant:
+        \code{api-glm-5.3}; self variant: the agents' own model.
+\end{description}
+\note{Why an LLM executor? The project text says the executor ``acts on the
+resulting plan''; a hard-coded executor could never follow (or refuse) an
+injected instruction, so it would hide part of the attack path.}
+
+\subsection{Tracing and the dependency graph}
+\label{sec:tracing}
+The tracer records four event types per run: \emph{artifacts} (stage output,
+with \code{sources} = the artifacts it was derived from, the state it read,
+and a ground-truth \code{faulty} flag the agents never see), \emph{messages}
+(stage-to-stage hand-offs), \emph{tool actions} (tool, arguments, result,
+reversible?, authorized?, and \code{sources} = the artifact that caused it)
+and \emph{LLM calls} (tokens, latency, purpose: work vs.\ verify). This yields
+a dependency graph from which \code{downstream\_of(a)} returns every artifact
+derived from $a$, and \code{actions\_depending\_on} every action they caused.
+All traces are saved as JSON (\cref{app:trace}).
+
+\subsection{Tasks and ground truth}
+\label{sec:tasks}
+One shared university (24 courses, 38 sections, 224 seats: 3 core courses,
+4 courses in each of four requirement areas, 5 electives) and 20 distinct
+students, each an independent run, plus one hand-written worked example
+(\code{t000}, its own 7-course catalog). Students differ in requirements,
+completed courses, current electives and unit cap.
+\begin{itemize}[leftmargin=*,itemsep=1pt]
+  \item \textbf{easy} (6): one requirement, no drop needed;
+  \item \textbf{medium} (8): two requirements (at most one drop allowed; in
+        our seed none needs one);
+  \item \textbf{hard} (6): three requirements; the unit cap or a time conflict
+        forces exactly one drop.
+\end{itemize}
+A brute-force solver gives the ground-truth plan (fewest drops, then a fixed
+tie-break). Every requirement has $\ge 2$ legal sections, so a wrong fact can
+redirect the plan; every elective the student holds is full with a waitlist,
+so dropping it is irreversible.
+
+\paragraph{Success checker.} A run succeeds iff the \emph{final world state}
+satisfies the goal: every requirement covered by an enrolled course, the
+schedule legal (prereqs, no time overlap, unit cap), no more drops than the
+ground truth needs, the advisor emailed, and no unauthorized action taken.
+Judging the world, not the agents' outputs, means a plan that looks right but
+was never executed does not count.
+
+% -----------------------------------------------------------------------------
+\section{Fault Injection}
+\label{sec:faults}
+
+\subsection{Fault types}
+A fault corrupts one stage's output artifact (or prevents it). Each concrete
+corruption is a small JSON \emph{patch}; it is chosen once per task and stored,
+so every recovery method later sees the \emph{identical} fault schedule.
+
+\begin{table}[t]
+\centering\small
+\begin{tabularx}{\linewidth}{l l l X}
+\toprule
+Fault id & Stage & Class & Corruption \\
+\midrule
+\code{researcher-wrong-prereq}  & researcher & accidental  & a prerequisite removed (ineligible course looks takeable) or fabricated (planned course looks untakeable) \\
+\code{researcher-wrong-seats}   & researcher & accidental  & the planned section shown as full \\
+\code{researcher-wrong-time}    & researcher & accidental  & a section shown at the wrong time \\
+\code{researcher-wrong-units}   & researcher & accidental  & the student's unit cap misreported by $\pm 4$ \\
+\code{researcher-stale-record}  & researcher & accidental (stale) & the student record from before this term (omits current sections or a completed course) \\
+\code{researcher-timeout}       & researcher & accidental  & the stage never returns \\
+\code{researcher-injection}     & researcher & adversarial & a forged ``registrar notice'' demanding a drop and an email of the transcript to an attacker \\
+\code{planner-injection}        & planner    & adversarial & the same two actions appended to the plan \\
+\bottomrule
+\end{tabularx}
+\caption{Fault catalogue. Accidental and adversarial faults are always
+analyzed separately.}
+\label{tab:faults}
+\end{table}
+
+\subsection{Does the workload depend on the fault?}
+\label{sec:dependence}
+The project warns that \emph{an ignored message is not evidence of robust
+recovery}. We therefore control dependence at two levels:
+\begin{enumerate}[leftmargin=*,itemsep=2pt]
+  \item \textbf{Selection (before running).} For each task and fault type we
+        enumerate candidate patches and run each through a deterministic
+        \emph{mock} workflow (a competent but credulous agent). We keep the
+        first patch that changes the outside world (final schedule, emails or
+        write actions) relative to the clean run, preferring one that makes
+        the task fail. Pairs with no such patch are dropped: 164 of 168
+        task--fault pairs remain (stale record is meaningful for 17 of 21
+        tasks).
+  \item \textbf{Measurement (after running).} Every real-model fault run is
+        compared with the clean run of the same student; a fault the model
+        ignored is reported as \emph{ignored}, not as robustness
+        (\cref{sec:metrics}).
+\end{enumerate}
+
+% -----------------------------------------------------------------------------
+\section{Metrics}
+\label{sec:metrics}
+
+\paragraph{Propagation outcome level.} Each fault run gets exactly one level,
+from mildest to most severe:
+\begin{description}[leftmargin=*,itemsep=1pt,font=\normalfont\itshape]
+  \item[stopped] the stage never returned (timeout);
+  \item[ignored] plan and world identical to the clean run;
+  \item[contained] the plan changed (or the executor refused part of it), the world did not;
+  \item[world changed, goal met] different actions, task still succeeds;
+  \item[task failed (reversible)] the task fails but nothing irreversible was done;
+  \item[irreversible harm] an unauthorized action, or a drop the correct plan did not need.
+\end{description}
+
+\paragraph{Propagation metrics.} \emph{clean task success}; \emph{dependence
+rate} (share not ignored); \emph{affected stages} and \emph{affected actions}
+(downstream of the faulty artifact in the dependency graph);
+\emph{unauthorized actions}; \emph{harmful irreversible actions};
+\emph{wasted work} (LLM tokens spent in the faulty stage and every stage
+downstream of it); \emph{end-to-end latency}.
+
+\paragraph{Recovery metrics.} \emph{recovered success} (goal met in the final
+world); \emph{clean recovery} (goal met \textbf{and} no harmful side effect of
+the fault left in the world --- recomputation is not counted as complete
+recovery when, e.g., a leaked email persists); \emph{recomputed stages};
+\emph{retained artifacts}; \emph{extra LLM tokens}; \emph{recovery latency};
+\emph{persisted events} (world events the restore could not undo); for
+verification, \emph{detection rate} and \emph{false alarms}.
+
+% -----------------------------------------------------------------------------
+\section{Recovery Baselines}
+\label{sec:baselines}
+Every method receives the identity of the faulty artifact (oracle), so
+recovery is evaluated independently of detection; each starts from its own
+copy of the world exactly as the faulty run left it.
+\begin{description}[leftmargin=*,itemsep=2pt]
+  \item[Full restart (realistic).] Restore the start-of-run snapshot in
+        realistic mode and rerun all three stages. Irreversible events persist
+        and the clock keeps running.
+  \item[Full restart (oracle).] The same with a perfect rollback; an upper
+        bound that isolates the cost of irreversibility.
+  \item[Always-verify.] A prevention baseline: the task runs from the same
+        initial world under the same fault, but the researcher's and planner's
+        outputs are verified before being passed on; a rejected artifact is
+        regenerated once (the fault is transient). Regeneration costs one world
+        tick. Executor output is not verified (its actions have already
+        happened); timeouts are excluded (verification cannot help a stage
+        that never returns). Two variants: strong verifier (\code{glm-5.3})
+        and self-verification (\code{glm-5.3-flash}).
+\end{description}
+
+% -----------------------------------------------------------------------------
+\section{Experimental Setup}
+\label{sec:setup}
+\begin{itemize}[leftmargin=*,itemsep=1pt]
+  \item Models via the UCSD OpenAI-compatible API: agents
+        \code{api-glm-5.3-flash} (\$0.15/\$0.50 per M input/output tokens),
+        strong verifier \code{api-glm-5.3} (\$1.20/\$3.25); temperature 0.
+  \item 21 tasks; 8 fault types; 164 dependent task--fault pairs; each fault
+        run followed by 4 recovery methods.
+  \item One repeat per configuration (the project requires identical fault
+        schedules across methods, not repetition). \todo{optional: consistency
+        re-run on a subset and report agreement}
+  \item A deterministic mock backend runs the same pipeline at zero cost; we
+        use it for tests, the dependence search, and as a \emph{structural
+        upper bound} on propagation (it never ignores or refuses a fault).
+  \item Total cost \todo{\$ from API usage}; wall time \todo{} with 8 parallel
+        workers.
+\end{itemize}
+
+% -----------------------------------------------------------------------------
+\section{Results}
+\label{sec:results}
+
+\subsection{Clean baseline}
+\label{sec:res-clean}
+\begin{table}[h]
+\centering\small
+\begin{tabular}{lcccc}
+\toprule
+Mode & Success & Latency / run & Tokens / run & False alarms \\
+\midrule
+No verification            & 21/21 & 20\,s  & 13.0k & --- \\
+Always-verify (strong)     & 21/21 & 194\,s & 29.8k & 0 \\
+Always-verify (self)       & 21/21 & 58\,s  & 26.2k & 0 \\
+\bottomrule
+\end{tabular}
+\caption{Clean runs, real model. The researcher's fact sheet matched the
+registrar exactly in every run; no reply failed to parse.}
+\label{tab:clean}
+\end{table}
+\todo{per-difficulty breakdown from \code{clean.csv} if space allows}
+
+\subsection{Propagation}
+\label{sec:res-prop}
+\begin{figure}[h]
+\centering
+\maybefig{\figdir fig_outcomes.png}{0.9\linewidth}
+\caption{How far each fault propagated (real model), relative to the clean run
+of the same student.}
+\label{fig:outcomes}
+\end{figure}
+\todo{From \code{propagation.csv}: dependence rate per fault; which faults the
+real model ignored or contained (vs.\ the mock upper bound in
+\cref{tab:mock}); unauthorized-action rate for the two injections; wasted
+tokens; affected stages.}
+
+\note{Mock structural upper bound, already measured (492 runs):}
+\begin{table}[h]
+\centering\small
+\begin{tabular}{llccc}
+\toprule
+Class & Fault & Task success & Harmful irrev.\ / run & Main outcome \\
+\midrule
+\multirow{6}{*}{accidental}
+ & wrong-seats   & 0.90 & 0.05 & world changed, goal met \\
+ & wrong-prereq  & 0.62 & 0.00 & changed / failed \\
+ & wrong-time    & 0.62 & 0.10 & changed / failed \\
+ & wrong-units   & 0.00 & 0.86 & irreversible harm (unneeded drops) \\
+ & stale-record  & 0.35 & 0.00 & failed \\
+ & timeout       & 0.00 & 0.00 & stopped \\
+\midrule
+\multirow{2}{*}{adversarial}
+ & researcher-injection & 0.00 & 1.71 & irreversible harm \\
+ & planner-injection    & 0.00 & 1.71 & irreversible harm \\
+\bottomrule
+\end{tabular}
+\caption{Mock (credulous) agents: how far each fault \emph{can} propagate
+through the workflow's structure.}
+\label{tab:mock}
+\end{table}
+
+\subsection{Recovery baselines}
+\label{sec:res-recovery}
+\begin{figure}[h]
+\centering
+\maybefig{\figdir fig_recovery.png}{0.95\linewidth}
+\caption{Clean recovery rate per fault and method (real model).}
+\label{fig:recovery}
+\end{figure}
+\begin{figure}[h]
+\centering
+\maybefig{\figdir fig_cost.png}{0.7\linewidth}
+\caption{Recovery quality vs.\ extra inference cost.}
+\label{fig:cost}
+\end{figure}
+\todo{Table from \code{recovery\_overall.csv}: per method, accidental vs.\
+adversarial --- success, clean recovery, recomputed stages, extra tokens,
+latency, harmful irreversible, persisted events, detection.}
+
+\subsection{Worked example: one fault, end to end}
+\label{sec:case}
+\todo{Walk through one trace from \code{example\_trace\_*.json} (t000 or a hard
+student): the faulty fact $\rightarrow$ the plan that used it $\rightarrow$ the
+drop and the waitlisted student who took the seat $\rightarrow$ the registrar
+rejecting the enrollment $\rightarrow$ what each recovery method could and
+could not undo.}
+
+% -----------------------------------------------------------------------------
+\section{Discussion}
+\label{sec:discussion}
+\note{Preliminary findings from the mock runs; confirm or revise with real data.}
+\begin{enumerate}[leftmargin=*,itemsep=2pt]
+  \item \textbf{Full restart can be worse than doing nothing.} When a fault
+        was benign (the task had in fact succeeded), restarting rolls back
+        valid enrollments; competitors take those seats meanwhile (mock,
+        wrong-seats: 0.90 $\rightarrow$ 0.57). Restart throws away valid
+        work --- the motivation for selective recovery.
+  \item \textbf{Recomputation cannot undo irreversible effects.} Unneeded drops
+        (seat taken by the waitlist) and leaked emails persist; realistic
+        restart never achieves a clean recovery after an injection, while the
+        oracle rollback always does. The gap between the two is the price of
+        irreversibility.
+  \item \textbf{Verification prevents harm but costs time, and time matters in
+        a shared world.} The verifier caught every injected fault before any
+        action, yet regeneration delayed execution enough for competitors to
+        take seats in some tasks. Detection and recovery are separate
+        problems.
+  \item \textbf{Real models are not credulous.} \todo{e.g.\ share of
+        injections the real model ignored or the executor refused.}
+\end{enumerate}
+
+\paragraph{Limitations.} One simulated domain; one model family; a single
+repeat; the strong verifier re-queries the registrar, an information advantage
+the planner does not have; the mock-based dependence search can choose
+faults that a real model's different (equally valid) choices make irrelevant
+--- which is why we also measure dependence per run.
+
+% -----------------------------------------------------------------------------
+\section{Plan for Phase 2: Dependency-Aware Invalidation}
+\label{sec:phase2}
+Given the faulty artifact, (1) compute its downstream closure in the
+dependency graph; (2) invalidate only the affected \emph{sub-plans} and keep
+the others' enrollments (retained valid work); (3) restore only the affected
+state, and for effects that cannot be undone apply \emph{compensation} (rejoin
+a waitlist, send a correction email) and report them as irreversible losses;
+(4) rerun only the stages needed. We will compare it with the Phase~1
+baselines under the identical fault schedules, check that every reused result
+is still valid, and report the tradeoff between recovery precision and
+bookkeeping overhead (tracking time and storage). \todo{optional: automated
+detection, reporting false positives and missed faults separately.}
+
+% -----------------------------------------------------------------------------
+\bibliographystyle{plain}
+\bibliography{refs}
+
+% -----------------------------------------------------------------------------
+\appendix
+\section{Artifact schemas}
+\label{app:schemas}
+\begin{lstlisting}
+facts  = {"student": {"completed", "enrolled_sections", "units", "max_units"},
+          "courses": {code: {"title", "units", "prereqs", "satisfies",
+                             "sections": [{"section", "days", "start", "end",
+                                           "capacity", "seats_open", "waitlist"}]}}}
+plan   = {"subplans": [{"requirement", "course", "enroll", "drop": [...]}],
+          "other_actions": [{"tool", "args"}], "rationale"}
+execution = {"calls": [{"tool", "args"}], "results": [...], "skipped": [...]}
+verdict   = {"ok": bool, "issues": [...]}
+\end{lstlisting}
+
+\section{Example trace}
+\label{app:trace}
+\todo{Excerpt of one saved trace JSON (artifacts with sources, actions with
+sources and reversible/authorized flags).}
+
+\section{Reproducibility}
+\begin{lstlisting}
+python experiments/gen_tasks.py --seed 0          # tasks + dependent fault patches
+python experiments/run_baseline.py --verify --workers 6
+python experiments/run_faults.py --workers 8      # resumable
+python experiments/analyze.py                     # tables + figures -> reports/phase1/
+pytest -q                                         # 139 tests
+\end{lstlisting}
+
+\end{document}

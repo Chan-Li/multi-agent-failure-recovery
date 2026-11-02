@@ -59,7 +59,7 @@ def run_one(job, cfg, strategies, traces_dir, no_recovery) -> dict:
     # Recovery baselines (oracle fault identity). Each method starts from its
     # own copy of the world exactly as the faulty run left it.
     for m, strategy in ({} if no_recovery else strategies).items():
-        if m == "verify_all" and spec.kind == "timeout":
+        if m.startswith("verify_all") and spec.kind == "timeout":
             continue          # verification cannot help a stage that never returns
         wf_m = Workflow(wf.agents, copy.deepcopy(wf.env))
         rep_ = strategy.recover(wf_m, task, res, faulty_id, spec)

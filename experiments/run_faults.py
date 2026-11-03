@@ -31,6 +31,23 @@ def propagation_metrics(res) -> dict:
     }
 
 
+def run_verify_only(job, cfg, strategies, traces_dir) -> dict:
+    """Re-run only verify-all variants. They start from the clean initial world
+    under the same fault schedule, so the original faulty run is not needed."""
+    from types import SimpleNamespace
+    task, spec, run_id = job["task"], job["spec"], job["run_id"]
+    row = {"run_id": run_id, "task_id": task["task_id"], "fault_id": spec.id}
+    if spec.kind == "timeout":
+        return row
+    stub = SimpleNamespace(run_id=run_id, tracer=SimpleNamespace(llm_calls=[]))
+    for m, strategy in strategies.items():
+        rep_ = strategy.recover(build_workflow(cfg), task, stub, None, spec)
+        rep_.final.tracer.save(traces_dir)
+        row.update(rep_.to_row(m))
+        row[f"{m}.verdicts"] = rep_.final.metrics["verdicts"]
+    return row
+
+
 def run_one(job, cfg, strategies, traces_dir, no_recovery) -> dict:
     task, spec, rep, run_id = job["task"], job["spec"], job["repeat"], job["run_id"]
     wf = build_workflow(cfg)
@@ -99,8 +116,12 @@ def main():
                              "task": task, "spec": spec, "repeat": rep})
     print(f"skipping {skipped} task x fault pairs with no dependence")
     out = ROOT / cfg["output"]["results_dir"] / args.out
-    n = run_jobs(jobs, lambda j: run_one(j, cfg, strategies, traces_dir, args.no_recovery),
-                 out, workers=args.workers, fresh=args.fresh)
+    if all(m.startswith("verify_all") for m in strategies):
+        jobs = [j for j in jobs if j["spec"].kind != "timeout"]
+        fn = lambda j: run_verify_only(j, cfg, strategies, traces_dir)
+    else:
+        fn = lambda j: run_one(j, cfg, strategies, traces_dir, args.no_recovery)
+    n = run_jobs(jobs, fn, out, workers=args.workers, fresh=args.fresh)
     print(f"wrote {n} new rows -> {out}")
 
 

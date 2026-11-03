@@ -36,6 +36,9 @@ import matplotlib.pyplot as plt  # noqa: E402
 import pandas as pd  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
+import sys  # noqa: E402
+sys.path.insert(0, str(ROOT))
+from src.recovery import harmful_subset  # noqa: E402
 
 LEVELS = ["ignored", "contained", "benign_change", "failed", "irreversible_harm"]
 LEVEL_LABELS = {"ignored": "Ignored", "contained": "Contained in artifacts",
@@ -94,6 +97,24 @@ def stage_tokens(trace: Optional[Dict[str, Any]], stages) -> int:
         return 0
     return sum(c["prompt_tokens"] + c["completion_tokens"] for c in trace["llm_calls"]
                if c["stage"] in stages)
+
+
+def trace_harm(trace: Optional[Dict[str, Any]], n_drops_needed: int) -> Optional[int]:
+    """Recompute harmful irreversible actions from a saved trace (count-based,
+    see src.recovery.harmful_subset). None if the trace is missing."""
+    if not trace:
+        return None
+    arts = {a["artifact_id"]: a for a in trace["artifacts"]}
+    tainted = {aid for aid, a in arts.items() if a.get("faulty")}
+    if not tainted:
+        return 0
+    changed = True
+    while changed:                                   # downstream closure
+        new = {aid for aid, a in arts.items() if set(a.get("sources", [])) & tainted} - tainted
+        tainted |= new
+        changed = bool(new)
+    irrev = [a for a in trace["actions"] if set(a.get("sources", [])) & tainted and not a["reversible"]]
+    return len(harmful_subset(irrev, n_drops_needed, get=lambda a, k: a[k]))
 
 
 def classify(row, ftrace, ctrace) -> str:
@@ -300,6 +321,29 @@ def main():
     if "job_error" in base:
         base = base[base["job_error"].isna()]
 
+    # Re-derive harm with the count-based rule (fixes runs analyzed before it):
+    # dropping an equally valid elective is not harm.
+    tasks = {t["task_id"]: t for t in json.loads((ROOT / "data" / "tasks.json").read_text())["tasks"]}
+    fixed = 0
+    for i, r in faults.iterrows():
+        need = len(tasks[r["task_id"]]["expected"]["drops"])
+        h = trace_harm(load_trace(traces, r["run_id"]), need)
+        if h is not None and h != r["fault_harmful_irreversible"]:
+            fixed += 1
+            faults.at[i, "fault_harmful_irreversible"] = h
+        if "full_restart.success" in faults:     # realistic restart inherits the faulty run's harm
+            faults.at[i, "full_restart.harmful_irreversible"] = faults.at[i, "fault_harmful_irreversible"]
+            faults.at[i, "full_restart.clean_recovery"] = bool(r["full_restart.success"]) and \
+                faults.at[i, "fault_harmful_irreversible"] == 0
+    print(f"harm re-derived from traces: {fixed} fault runs corrected")
+
+    # t000 is the hand-written worked example with its own catalog: report it
+    # separately, not inside the averages over the 20 students.
+    example = faults[faults["task_id"] == "t000"]
+    faults = faults[faults["task_id"] != "t000"]
+    base_example = base[base["task_id"] == "t000"]
+    base = base[base["task_id"] != "t000"]
+
     # --- 7.1 clean
     clean = clean_tables(base)
     clean.to_csv(out_dir / "clean.csv")
@@ -349,12 +393,19 @@ def main():
         if src.exists():
             shutil.copy(src, out_dir / f"example_trace_{rid}.json")
 
-    summary = ["# Phase 1 results", f"source: `{args.results}`, {len(base)} clean rows, {len(faults)} fault runs", "",
+    ex_cols = ["fault_id", "fault_description", "success", "fault_harmful_irreversible"] + \
+        [f"{m}.success" for m in METHODS[1:] if f"{m}.success" in example]
+    example_tab = example[ex_cols].set_index("fault_id")
+    example_tab.to_csv(out_dir / "example_t000.csv")
+    summary = ["# Phase 1 results",
+               f"source: `{args.results}`, {len(base)} clean rows, {len(faults)} fault runs "
+               f"over the 20 students (t000 reported separately)", "",
                "## Clean baseline", md(clean), "",
                "## Propagation outcome levels (share of fault runs)", md(outcomes), "",
                "## Propagation metrics", md(prop), "",
                "## Recovery by method (overall)", md(overall), "",
-               "## Recovery by fault and method", md(by_fault), ""]
+               "## Recovery by fault and method", md(by_fault), "",
+               "## Worked example t000 (own catalog, not in the averages)", md(example_tab), ""]
     (out_dir / "summary.md").write_text("\n".join(summary))
     print("\n".join(summary[:12]))
     print(f"\nwrote tables, figures and summary.md -> {out_dir}")

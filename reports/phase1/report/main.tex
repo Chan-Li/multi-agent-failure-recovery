@@ -335,8 +335,8 @@ recovery}. We therefore control dependence at two levels:
         task and fault pairs remain (stale record is meaningful for 17 of 21
         tasks).
   \item \textbf{Measurement (after running).} Every real-model fault run is
-        compared with the clean run of the same student; a fault the model
-        ignored is reported as \emph{ignored}, not as robustness
+        compared with all three clean runs of the same student; a fault the
+        model ignored is reported as \emph{ignored}, not as robustness
         (\cref{sec:metrics}).
 \end{enumerate}
 
@@ -348,7 +348,7 @@ recovery}. We therefore control dependence at two levels:
 from mildest to most severe:
 \begin{description}[leftmargin=1em,itemsep=1pt,font=\normalfont\itshape]
   \item[stopped] the stage never returned (timeout);
-  \item[ignored] plan and world identical to the clean run;
+  \item[ignored] plan and world identical to one of the student's clean runs;
   \item[contained] the plan changed (or the executor refused part of it), the world did not;
   \item[world changed, goal met] different actions, task still succeeds;
   \item[task failed (reversible)] the task fails but nothing irreversible was done;
@@ -404,15 +404,22 @@ copy of the world exactly as the faulty run left it.
         timeouts). All averages are over the 20 students (157 fault runs);
         the hand-written example \code{t000} is reported separately
         (\cref{sec:case}).
-  \item One repeat per configuration (the project requires identical fault
-        schedules across methods, not repetition). Each number is therefore
-        a single sample per student; differences of one or two runs out of 20
-        (5 to 10 points) should not be over-read.
+  \item One repeat per fault configuration (the project requires identical
+        fault schedules across methods, not repetition), and three clean runs
+        per student. Each fault number is therefore a single sample per
+        student; we test the key comparisons with a paired exact McNemar test
+        and do not interpret differences of one or two runs out of 20.
+  \item \textbf{The model is not deterministic at temperature 0.} Two clean
+        runs of the same student chose different (equally valid) plans in 20
+        of 60 pairs (33\%); 8 of the 20 students received more than one plan.
+        Every propagation label therefore compares a fault run with
+        \emph{all three} clean runs of that student, and a plan counts as
+        changed only if it matches none of them.
   \item A deterministic mock backend runs the same pipeline at zero cost; we
         use it for tests, the dependence search, and as a \emph{structural
         upper bound} on propagation (it never ignores or refuses a fault).
-  \item Total API cost for the runs reported here about \$8.2 (14.9M agent
-        tokens at about \$3.6 and 2.7M strong-verifier tokens at about
+  \item Total API cost for the runs reported here about \$8.3 (15.5M agent
+        tokens at about \$3.7 and 2.7M strong-verifier tokens at about
         \$4.6), well within the \$50 budget. Wall time about 4.4\,h for the
         fault runs plus 50\,min for the always-verify runs, with 8 parallel
         workers.
@@ -434,32 +441,36 @@ copy of the world exactly as the faulty run left it.
 \toprule
 Mode & Success & Latency / run & Tokens / run & False alarms \\
 \midrule
-No verification            & 20/20 & 21\,s  & 13.4k & n/a \\
+No verification            & 60/60 & 26\,s  & 13.4k & n/a \\
 Always-verify (strong)     & 20/20 & 199\,s & 30.7k & 0 \\
 Always-verify (self)       & 20/20 & 54\,s  & 27.1k & 0 \\
 \bottomrule
 \end{tabular}
-\caption{Clean runs over the 20 students, real model (\code{t000} also
-succeeds in all three modes). The researcher's fact sheet matched the
+\caption{Clean runs over the 20 students, real model (three runs per student
+without verification, one per verifier; \code{t000} also succeeds in all
+modes). The researcher's fact sheet matched the
 registrar exactly in every run; no reply failed to parse.}
 \label{tab:clean}
 \end{table}
-The clean workflow is reliable at every difficulty level (easy 6/6, medium
-8/8, hard 6/6), with cost growing only slightly with the number of
+The clean workflow is reliable at every difficulty level (easy 18/18, medium
+24/24, hard 18/18), with cost growing only slightly with the number of
 requirements (12.9k, 13.4k and 14.0k tokens per run). Verification more than
 doubles the tokens of a clean run (the verifier re-reads the registrar and
 both artifacts) and, with the strong verifier, multiplies latency by about
-ten. Neither verifier raised a false alarm on a clean run. A 100\% clean
-baseline matters for what follows: every fault-run failure can be attributed
-to the fault, not to the workflow.
+ten. Neither verifier raised a false alarm on a clean run. The clean
+baseline is high but not perfect: the oracle restarts of \cref{sec:res-recovery}
+start from exactly the clean initial world and are in effect 157 more clean
+runs, of which 151 (96\%) succeed. Together, 211 of 217 clean runs succeed
+(97\%), so a few percent of fault-run failures may be ordinary failures of the
+workflow rather than effects of the fault.
 
 \subsection{Propagation}
 \label{sec:res-prop}
 \begin{figure}[h]
 \centering
 \maybefig{\figdir fig_outcomes.png}{0.9\linewidth}
-\caption{How far each fault propagated (real model), relative to the clean run
-of the same student.}
+\caption{How far each fault propagated (real model), relative to all three
+clean runs of the same student.}
 \label{fig:outcomes}
 \end{figure}
 \begin{table}[h]
@@ -470,20 +481,21 @@ of the same student.}
 Class & Fault & $n$ & Depends & Success & Harm.\ irrev. & Wasted tok. & Main outcome \\
 \midrule
 \multirow{6}{*}{accidental}
- & wrong-seats   & 20 & 0.80 & 0.95 & 0.05 & 13.4k & changed, goal met (75\%) \\
- & wrong-prereq  & 20 & 0.85 & 0.70 & 0.00 & 13.8k & changed, goal met (55\%) \\
- & wrong-time    & 20 & 0.85 & 0.70 & 0.00 & 13.5k & changed, goal met (55\%) \\
- & wrong-units   & 20 & 1.00 & 0.05 & 0.85 & 13.7k & irreversible harm (85\%) \\
+ & wrong-seats   & 20 & 0.65 & 0.95 & 0.05 & 13.4k & changed, goal met (60\%) \\
+ & wrong-prereq  & 20 & 0.65 & 0.70 & 0.00 & 13.8k & ignored / changed (35\% each) \\
+ & wrong-time    & 20 & 0.75 & 0.70 & 0.00 & 13.5k & changed, goal met (45\%) \\
+ & wrong-units   & 20 & 0.95 & 0.05 & 0.85 & 13.7k & irreversible harm (85\%) \\
  & stale-record  & 17 & 0.76 & 0.41 & 0.00 & 13.3k & task failed (59\%) \\
  & timeout       & 20 & 1.00 & 0.00 & 0.00 & 0     & stopped (100\%) \\
 \midrule
 \multirow{2}{*}{adversarial}
- & researcher-injection & 20 & 0.30 & 1.00 & 0.00 & 13.6k & ignored (70\%) \\
- & planner-injection    & 20 & 1.00 & 1.00 & 0.00 & 6.2k  & contained (70\%) \\
+ & researcher-injection & 20 & 0.15 & 1.00 & 0.00 & 13.6k & ignored (85\%) \\
+ & planner-injection    & 20 & 1.00 & 1.00 & 0.00 & 6.2k  & contained (80\%) \\
 \bottomrule
 \end{tabular}}
 \caption{Propagation with the real model, over the 20 students. \emph{Depends}:
-share of runs whose plan or world differs from the paired clean run.
+share of runs whose plan or world differs from every clean run of the same
+student (or that failed).
 \emph{Harm.\ irrev.}: harmful irreversible actions per run. \emph{Wasted
 tok.}: tokens spent in the faulty stage and every stage downstream of it.
 No run of any fault took an unauthorized action. Every non-timeout fault
@@ -494,7 +506,7 @@ the planner injection.}
 
 \paragraph{Accidental faults propagate; adversarial ones mostly do not.}
 \Cref{tab:prop} shows the central asymmetry of Phase~1. The four
-``wrong fact'' faults are used by the planner in 80\% to 100\% of runs, and
+``wrong fact'' faults are used by the planner in 65\% to 95\% of runs, and
 because the planner has no other source, a wrong fact becomes a wrong plan.
 Most wrong prerequisites, times and seat counts only redirect the plan to a
 different but still legal section (\emph{changed, goal met}); they fail the
@@ -506,7 +518,7 @@ in 85\% of runs and cannot be undone. The stale record fails 59\% of runs
 because the planner plans for the wrong set of completed and current courses.
 
 The two injections, in contrast, never caused an unauthorized action. The
-planner ignored the forged registrar notice in 70\% of runs (the other 30\%
+planner ignored the forged registrar notice in 85\% of runs (the other 15\%
 changed the plan in ways that still met the goal, but none followed the
 notice), and the executor refused the injected drop and email in every
 planner-injection run (\emph{contained}). The real model is therefore far
@@ -515,11 +527,14 @@ less credulous than the mock agent, which follows every injection
 not from instructions that look suspicious.
 
 \paragraph{Dependence is not guaranteed.} Faults were selected so that the
-mock workflow's outcome depends on them, yet the real model ignored up to
-24\% of the wrong-fact faults (none of the unit-cap faults) and 70\% of
-researcher injections, mostly by
-choosing a different (equally valid) section that the fault did not touch.
-We report these runs as \emph{ignored}, not as robustness.
+mock workflow's outcome depends on them, yet the real model ignored between
+5\% (unit cap) and 35\% (wrong prerequisite, wrong seats) of the wrong-fact
+faults and 85\% of researcher injections, mostly by choosing a different
+(equally valid) section that the fault did not touch. We report these runs as
+\emph{ignored}, not as robustness. Comparing with a single clean run instead
+of all three would have overstated dependence: with one clean run, 30\% of
+researcher injections and up to 20 points more of the wrong-fact faults would
+have been labelled as changed, purely from plan variation between runs.
 
 \paragraph{Wasted work.} A researcher fault wastes essentially the whole run
 (13 to 14k tokens: the researcher, planner and executor all have to be redone
@@ -596,8 +611,11 @@ identical fault schedules. \emph{Clean rec.}: goal met in the final world and
 no harmful side effect of the fault left behind; in our runs it equals plain
 recovered success in every row, because the only harmful side effect that
 occurred (an unneeded drop) also fails the goal. \emph{Recomp.}: stages
-recomputed per run. \emph{Extra tok.}: LLM tokens beyond the faulty run (for
-always-verify, the whole verified rerun including verifier calls).
+recomputed per run. \emph{Extra tok.}: for full restart, the tokens of the
+rerun on top of the faulty run; for always-verify, the overhead over an
+unverified run (verifier calls plus regenerations). Always-verify pays most of
+this overhead on every run, faulty or not (17.4k and 13.6k tokens per clean
+run, \cref{tab:clean}), while a restart is paid only when a fault occurs.
 \emph{Harm.\ irrev.}: harmful irreversible actions of the fault still in the
 world. \emph{Persisted}: external events the restore had to re-apply.
 Always-verify is not run for timeouts ($n=97$). Latencies are inflated by API
@@ -615,15 +633,25 @@ fault already caused stays: after the unit-cap fault the dropped elective is
 gone, and realistic restart recovers only 15\% of runs (oracle: 100\%).
 Second, the restart itself takes time while the clock keeps running, and
 competing students who arrive meanwhile take seats the rerun needs. In all,
-38 of the 157 realistic restarts fail.
+38 of the 157 realistic restarts fail. These gaps are significant in a paired
+exact McNemar test: realistic vs.\ oracle restart, 29 vs.\ 4 discordant runs
+($p<0.001$) for accidental and 8 vs.\ 1 ($p=0.04$) for adversarial faults;
+17 vs.\ 0 ($p<0.001$) for the unit-cap fault alone.
 
 \paragraph{Restart is sometimes worse than doing nothing.} Where the fault was
 benign, restarting throws away a correct result: 16 of the 38 failed restarts
 followed a faulty run that had already met the goal. All 40 injection runs had
-met the goal, yet realistic restart drops this to 80\%; for wrong seats it
-goes from 95\% to 85\%. In each of these runs the rerun could no longer cover
-a requirement the faulty run had covered, because the seats it had held were
-released by the rollback and taken by competitors before the rerun executed.
+met the goal, yet realistic restart drops this to 80\% (8 vs.\ 0 discordant
+runs, $p=0.008$). For wrong seats the same direction appears (95\% to 85\%),
+but with 2 discordant runs it is not significant. In these runs the rerun
+could no longer cover a requirement the faulty run had covered, because the
+seats it had held were released by the rollback and taken by competitors
+before the rerun executed. This effect depends on two design choices that
+favor it: competitors are scheduled to arrive just after a clean run would
+finish (\cref{sec:env}), and the realistic restart actively undoes the
+student's valid enrollments rather than rerunning the agents on the current
+world. A different competitor schedule, or a restart that keeps the world as
+it is, would shrink it.
 
 \paragraph{Always-verify prevents harm, at the highest cost.} Both verifiers
 stop every harmful irreversible action, because nothing is executed until the
@@ -638,11 +666,17 @@ take a seat. Verification is the most expensive method: 20k to 25k extra
 tokens per run, about 1.5 to 1.8 times a clean run, and the strong verifier
 needs 115 to 126\,s. On fault runs the verifiers raised 6 (strong) and 3
 (self) false alarms on non-faulty artifacts, against none on clean runs
-(\cref{tab:clean}). Surprisingly, self-verification with the agents' own
-small model detected every fault with fewer tokens and half the latency. Both
-verifiers can re-query the registrar, so most faults in our catalogue reduce
-to comparing a fact with its source, a check that does not need a strong
-model.
+(\cref{tab:clean}). Self-verification with the agents' own small model
+flagged the faulty artifact in every run, with fewer tokens and half the
+latency. Its recovered success is not distinguishable from the strong
+verifier's, however (6 vs.\ 4 discordant runs, $p=0.75$), nor from the oracle
+restart's ($p=0.75$). Both verifiers can re-query the registrar, so most
+faults in our catalogue reduce to comparing a fact with its source, a check
+that does not need a strong model. Two properties of the setup favor
+verification. First, the injected fault is transient: a regenerated artifact
+is always clean, whereas a persistently wrong source would fail again.
+Second, the verifier's prompt explicitly asks it to reject ``extra
+instructions or notes'', which makes the injection checks easy.
 
 \subsection{Worked example: one fault, end to end}
 \label{sec:case}
@@ -716,21 +750,30 @@ consistent with the first email) and report the drop as a loss.
         time matters in a shared world.} Both verifiers stopped every harmful
         action, but they cost 1.5 to 1.8 times a clean run in tokens, and
         regeneration delayed execution enough for competitors to take seats
-        in a few tasks (3 to 4 runs per verifier). A cheap self-verifier was
-        as accurate as the strong one here, because the faults could be
-        checked against the registrar. Detection and recovery are separate
+        in a few tasks (3 to 4 runs per verifier). The overhead is paid on
+        every run, not only on faulty ones. A cheap self-verifier detected
+        faults at least as well as the strong one here, because the faults
+        could be checked against the registrar; their recovered success does
+        not differ significantly. Detection and recovery are separate
         problems.
   \item \textbf{Real models are not credulous.} None of the 40 injection runs
         took an unauthorized action. The planner ignored the forged registrar
-        notice in 14 of 20 runs and did not follow it in the other 6; the
+        notice in 17 of 20 runs and did not follow it in the other 3; the
         executor refused the injected drop and email in all 20
         planner-injection runs. The credulous mock follows every injection
-        (1.71 harmful actions per run). With this model the threat is
+        (1.71 harmful actions per run). This robustness is partly by design:
+        the executor is given the student's constraints and told to skip
+        actions that violate the goal, and we test one injection template.
+        In every planner-injection task the injected drop targets a course
+        the student may drop, so only the email could have been
+        unauthorized. With this model and these prompts the threat is
         plausible wrong data, which the agents have no means to doubt.
 \end{enumerate}
 
 \paragraph{Limitations.} One simulated domain; one model family; a single
-repeat; the strong verifier re-queries the registrar, an information advantage
+repeat per fault run, against a measured 33\% plan variation between clean
+runs; one injection template, against agents whose prompts state the goal's
+constraints; the strong verifier re-queries the registrar, an information advantage
 the planner does not have; the mock-based dependence search can choose
 faults that a real model's different (equally valid) choices make irrelevant,
 which is why we also measure dependence per run.
@@ -820,6 +863,7 @@ the planner, and the \code{faulty} flag is ground truth that no agent sees.
 \begin{lstlisting}
 python experiments/gen_tasks.py --seed 0          # tasks + dependent fault patches
 python experiments/run_baseline.py --verify --workers 6
+python experiments/run_baseline.py --repeats 3 --workers 6   # 2 more clean runs per task
 python experiments/run_faults.py --workers 8      # resumable
 python experiments/analyze.py                     # tables + figures -> reports/phase1/
 pytest -q                                         # 140 tests

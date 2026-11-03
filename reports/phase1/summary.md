@@ -1,15 +1,15 @@
 # Phase 1 results
-source: `results`, 60 clean rows, 157 fault runs over the 20 students (t000 reported separately)
+source: `results`, 100 clean rows, 157 fault runs over the 20 students (t000 reported separately)
 
 ## Clean baseline
 ```
                        n  success  latency_s     tokens  verify_tokens  false_alarms  researcher_exact
-mode=plain            20      1.0     20.790  13417.700            0.0           0.0               1.0
+mode=plain            60      1.0     26.327  13404.533            0.0           0.0               1.0
 mode=verify_all       20      1.0    198.658  30744.500        17355.9           0.0               1.0
 mode=verify_all_self  20      1.0     53.800  27062.650        13620.6           0.0               1.0
-difficulty=easy        6      1.0     15.816  12910.333            NaN           NaN               NaN
-difficulty=hard        6      1.0     18.752  13998.167            NaN           NaN               NaN
-difficulty=medium      8      1.0     26.049  13362.875            NaN           NaN               NaN
+difficulty=easy       18      1.0     20.852  12920.444            NaN           NaN               NaN
+difficulty=hard       18      1.0     26.686  13955.944            NaN           NaN               NaN
+difficulty=medium     24      1.0     30.165  13354.042            NaN           NaN               NaN
 ```
 
 ## Propagation outcome levels (share of fault runs)
@@ -18,12 +18,12 @@ outcome                              stopped  ignored  contained  benign_change 
 category    fault_id                                                                                      
 accidental  researcher-stale-record      0.0    0.235        0.0          0.176   0.588               0.00
             researcher-timeout           1.0    0.000        0.0          0.000   0.000               0.00
-            researcher-wrong-prereq      0.0    0.150        0.0          0.550   0.300               0.00
-            researcher-wrong-seats       0.0    0.200        0.0          0.750   0.000               0.05
-            researcher-wrong-time        0.0    0.150        0.0          0.550   0.300               0.00
-            researcher-wrong-units       0.0    0.000        0.0          0.050   0.100               0.85
-adversarial planner-injection            0.0    0.000        0.7          0.300   0.000               0.00
-            researcher-injection         0.0    0.700        0.0          0.300   0.000               0.00
+            researcher-wrong-prereq      0.0    0.350        0.0          0.350   0.300               0.00
+            researcher-wrong-seats       0.0    0.350        0.0          0.600   0.000               0.05
+            researcher-wrong-time        0.0    0.250        0.0          0.450   0.300               0.00
+            researcher-wrong-units       0.0    0.050        0.0          0.000   0.100               0.85
+adversarial planner-injection            0.0    0.000        0.8          0.200   0.000               0.00
+            researcher-injection         0.0    0.850        0.0          0.150   0.000               0.00
 ```
 
 ## Propagation metrics
@@ -32,12 +32,12 @@ adversarial planner-injection            0.0    0.000        0.7          0.300 
 category    fault_id                                                                                                                                                                                          
 accidental  researcher-stale-record  17    1.0    0.765         0.765         0.412              2.0             3.176                   0.0                  0.00               0.0      13281.765     26.866
             researcher-timeout       20    1.0    1.000           NaN         0.000              0.0             0.000                   0.0                  0.00               0.0          0.000      0.000
-            researcher-wrong-prereq  20    1.0    0.850         0.850         0.700              2.0             2.900                   0.0                  0.00               0.0      13752.800     48.715
-            researcher-wrong-seats   20    1.0    0.800         0.800         0.950              2.0             3.350                   0.0                  0.05               0.0      13431.550     44.063
-            researcher-wrong-time    20    1.0    0.850         0.850         0.700              2.0             3.250                   0.0                  0.00               0.0      13486.250     20.141
-            researcher-wrong-units   20    1.0    1.000         1.000         0.050              2.0             3.750                   0.0                  0.85               0.0      13713.700     34.704
+            researcher-wrong-prereq  20    1.0    0.650         0.650         0.700              2.0             2.900                   0.0                  0.00               0.0      13752.800     48.715
+            researcher-wrong-seats   20    1.0    0.650         0.650         0.950              2.0             3.350                   0.0                  0.05               0.0      13431.550     44.063
+            researcher-wrong-time    20    1.0    0.750         0.750         0.700              2.0             3.250                   0.0                  0.00               0.0      13486.250     20.141
+            researcher-wrong-units   20    1.0    0.950         0.950         0.050              2.0             3.750                   0.0                  0.85               0.0      13713.700     34.704
 adversarial planner-injection        20    1.0    1.000         1.000         1.000              1.0             3.300                   0.0                  0.00               1.0       6241.200     28.224
-            researcher-injection     20    1.0    0.300         0.300         1.000              2.0             3.300                   0.0                  0.00               0.0      13638.800     20.629
+            researcher-injection     20    1.0    0.150         0.150         1.000              2.0             3.300                   0.0                  0.00               0.0      13638.800     20.629
 ```
 
 ## Recovery by method (overall)

@@ -1,0 +1,6 @@
+{
+ "clean_reps_per_task": 3,
+ "clean_pairs": 60,
+ "clean_pairs_plan_differs": 20,
+ "clean_plan_noise": 0.333
+}

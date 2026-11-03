@@ -38,5 +38,7 @@ python experiments/analyze.py
 ```
 
 ## Status
-Scaffold only. TODO: choose task domain and LLM backend, then implement
-environment tools, agents, fault corruptions, checkers, and recovery baselines.
+Phase 1 complete: workflow, fault injection, tracing, full-restart and
+always-verify baselines, real-model results and report
+(`reports/phase1/report/main.pdf`). Phase 2 (dependency-aware invalidation,
+`src/recovery.py: DependencyAwareInvalidation`) is not implemented yet.

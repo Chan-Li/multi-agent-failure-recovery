@@ -1,7 +1,7 @@
 ,n,success,latency_s,tokens,verify_tokens,false_alarms,researcher_exact
-mode=plain,20,1.0,20.79,13417.7,0.0,0.0,1.0
+mode=plain,60,1.0,26.327,13404.533,0.0,0.0,1.0
 mode=verify_all,20,1.0,198.658,30744.5,17355.9,0.0,1.0
 mode=verify_all_self,20,1.0,53.8,27062.65,13620.6,0.0,1.0
-difficulty=easy,6,1.0,15.816,12910.333,,,
-difficulty=hard,6,1.0,18.752,13998.167,,,
-difficulty=medium,8,1.0,26.049,13362.875,,,
+difficulty=easy,18,1.0,20.852,12920.444,,,
+difficulty=hard,18,1.0,26.686,13955.944,,,
+difficulty=medium,24,1.0,30.165,13354.042,,,

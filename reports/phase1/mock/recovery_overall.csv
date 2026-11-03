@@ -1,0 +1,11 @@
+category,method,n,success,clean_recovery,recomputed_stages,extra_tokens,latency_s,harmful_irreversible,persisted_events,detected
+accidental,no_recovery,366,0.418,0.41,0.0,0.0,0.0,0.172,0.0,
+accidental,full_restart,366,0.574,0.574,3.0,8210.033,0.009,0.172,2.164,
+accidental,full_restart_oracle,366,1.0,1.0,3.0,8217.0,0.01,0.0,0.0,
+accidental,verify_all,303,0.851,0.851,1.0,13523.693,0.027,0.0,0.0,1.0
+accidental,verify_all_self,303,0.851,0.851,1.0,13523.693,0.027,0.0,0.0,1.0
+adversarial,no_recovery,126,0.0,0.0,0.0,0.0,0.0,1.714,0.0,
+adversarial,full_restart,126,0.095,0.0,3.0,8161.286,0.008,1.714,4.81,
+adversarial,full_restart_oracle,126,1.0,1.0,3.0,8178.238,0.009,0.0,0.0,
+adversarial,verify_all,126,0.857,0.857,1.0,12796.857,0.024,0.0,0.0,1.0
+adversarial,verify_all_self,126,0.857,0.857,1.0,12796.857,0.025,0.0,0.0,1.0

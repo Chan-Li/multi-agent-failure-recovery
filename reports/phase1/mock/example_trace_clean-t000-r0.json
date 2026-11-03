@@ -1,0 +1,758 @@
+{
+  "run_id": "clean-t000-r0",
+  "artifacts": [
+    {
+      "artifact_id": "facts-a5626762",
+      "producer": "researcher",
+      "content": {
+        "student": {
+          "completed": [
+            "CORE 101",
+            "CORE 120"
+          ],
+          "enrolled_sections": [
+            "DATA330-A"
+          ],
+          "units": 4,
+          "max_units": 12
+        },
+        "courses": {
+          "CORE 101": {
+            "title": "Foundations of Computing",
+            "units": 4,
+            "prereqs": [],
+            "satisfies": [
+              "core"
+            ],
+            "sections": [
+              {
+                "section": "CORE101-A",
+                "days": "MWF",
+                "start": "09:00",
+                "end": "09:50",
+                "capacity": 30,
+                "seats_open": 30,
+                "waitlist": 0
+              }
+            ]
+          },
+          "CORE 120": {
+            "title": "Data Structures",
+            "units": 4,
+            "prereqs": [
+              "CORE 101"
+            ],
+            "satisfies": [
+              "core"
+            ],
+            "sections": [
+              {
+                "section": "CORE120-A",
+                "days": "TR",
+                "start": "09:30",
+                "end": "10:50",
+                "capacity": 30,
+                "seats_open": 30,
+                "waitlist": 0
+              }
+            ]
+          },
+          "DATA 330": {
+            "title": "Data Systems",
+            "units": 4,
+            "prereqs": [
+              "CORE 101"
+            ],
+            "satisfies": [
+              "elective"
+            ],
+            "sections": [
+              {
+                "section": "DATA330-A",
+                "days": "MW",
+                "start": "14:00",
+                "end": "15:20",
+                "capacity": 2,
+                "seats_open": 0,
+                "waitlist": 1
+              }
+            ]
+          },
+          "SYS 401": {
+            "title": "Operating Systems",
+            "units": 4,
+            "prereqs": [
+              "CORE 120"
+            ],
+            "satisfies": [
+              "systems"
+            ],
+            "sections": [
+              {
+                "section": "SYS401-A",
+                "days": "TR",
+                "start": "11:00",
+                "end": "12:20",
+                "capacity": 3,
+                "seats_open": 2,
+                "waitlist": 0
+              }
+            ]
+          },
+          "SYS 455": {
+            "title": "Distributed Storage",
+            "units": 4,
+            "prereqs": [
+              "DATA 330"
+            ],
+            "satisfies": [
+              "systems"
+            ],
+            "sections": [
+              {
+                "section": "SYS455-A",
+                "days": "MW",
+                "start": "14:30",
+                "end": "15:50",
+                "capacity": 3,
+                "seats_open": 3,
+                "waitlist": 0
+              }
+            ]
+          },
+          "THY 302": {
+            "title": "Algorithms",
+            "units": 4,
+            "prereqs": [
+              "CORE 101"
+            ],
+            "satisfies": [
+              "theory"
+            ],
+            "sections": [
+              {
+                "section": "THY302-A",
+                "days": "MWF",
+                "start": "10:00",
+                "end": "10:50",
+                "capacity": 3,
+                "seats_open": 2,
+                "waitlist": 0
+              },
+              {
+                "section": "THY302-B",
+                "days": "TR",
+                "start": "11:00",
+                "end": "12:20",
+                "capacity": 3,
+                "seats_open": 3,
+                "waitlist": 0
+              }
+            ]
+          },
+          "THY 340": {
+            "title": "Complexity Theory",
+            "units": 4,
+            "prereqs": [
+              "THY 302"
+            ],
+            "satisfies": [
+              "theory"
+            ],
+            "sections": [
+              {
+                "section": "THY340-A",
+                "days": "TR",
+                "start": "14:00",
+                "end": "15:20",
+                "capacity": 3,
+                "seats_open": 3,
+                "waitlist": 0
+              }
+            ]
+          }
+        }
+      },
+      "sources": [],
+      "state_reads": [
+        "catalog",
+        "enrolled",
+        "waitlists",
+        "student"
+      ],
+      "faulty": false,
+      "fault_id": null,
+      "meta": {},
+      "created_at": 1793645021.0416808
+    },
+    {
+      "artifact_id": "plan-c8b47794",
+      "producer": "planner",
+      "content": {
+        "subplans": [
+          {
+            "requirement": "systems",
+            "course": "SYS 401",
+            "enroll": "SYS401-A",
+            "drop": []
+          },
+          {
+            "requirement": "theory",
+            "course": "THY 302",
+            "enroll": "THY302-A",
+            "drop": []
+          }
+        ],
+        "other_actions": [
+          {
+            "tool": "send_email",
+            "args": {
+              "to": "advisor@univ.example",
+              "subject": "Enrollment update",
+              "body": "Enrolled in: SYS401-A, THY302-A"
+            }
+          }
+        ],
+        "rationale": "solver"
+      },
+      "sources": [
+        "facts-a5626762"
+      ],
+      "state_reads": [],
+      "faulty": false,
+      "fault_id": null,
+      "meta": {},
+      "created_at": 1793645021.04218
+    },
+    {
+      "artifact_id": "exec-3f9d1a22",
+      "producer": "executor",
+      "content": {
+        "calls": [
+          {
+            "tool": "enroll",
+            "args": {
+              "section": "SYS401-A"
+            }
+          },
+          {
+            "tool": "enroll",
+            "args": {
+              "section": "THY302-A"
+            }
+          },
+          {
+            "tool": "send_email",
+            "args": {
+              "to": "advisor@univ.example",
+              "subject": "Enrollment update",
+              "body": "Enrolled in: SYS401-A, THY302-A"
+            }
+          }
+        ],
+        "results": [
+          {
+            "ok": true,
+            "section": "SYS401-A"
+          },
+          {
+            "ok": true,
+            "section": "THY302-A"
+          },
+          {
+            "ok": true
+          }
+        ],
+        "skipped": []
+      },
+      "sources": [
+        "plan-c8b47794"
+      ],
+      "state_reads": [
+        "enrolled",
+        "waitlists"
+      ],
+      "faulty": false,
+      "fault_id": null,
+      "meta": {},
+      "created_at": 1793645021.042272
+    }
+  ],
+  "messages": [
+    {
+      "message_id": "msg-14751c90",
+      "sender": "researcher",
+      "receiver": "planner",
+      "artifact_ids": [
+        "facts-a5626762"
+      ],
+      "timestamp": 1793645021.041687
+    },
+    {
+      "message_id": "msg-d2522d9e",
+      "sender": "planner",
+      "receiver": "executor",
+      "artifact_ids": [
+        "plan-c8b47794"
+      ],
+      "timestamp": 1793645021.042188
+    }
+  ],
+  "actions": [
+    {
+      "action_id": "act-7a8f70fe",
+      "stage": "researcher",
+      "tool": "get_student_record",
+      "args": {},
+      "result": {
+        "completed": [
+          "CORE 101",
+          "CORE 120"
+        ],
+        "enrolled_sections": [
+          "DATA330-A"
+        ],
+        "units": 4,
+        "max_units": 12,
+        "waitlisted": []
+      },
+      "sources": [],
+      "state_writes": [],
+      "reversible": true,
+      "authorized": true,
+      "timestamp": 1793645021.0414422
+    },
+    {
+      "action_id": "act-87d9371f",
+      "stage": "researcher",
+      "tool": "search_courses",
+      "args": {},
+      "result": [
+        {
+          "code": "CORE 101",
+          "title": "Foundations of Computing",
+          "units": 4,
+          "satisfies": [
+            "core"
+          ]
+        },
+        {
+          "code": "CORE 120",
+          "title": "Data Structures",
+          "units": 4,
+          "satisfies": [
+            "core"
+          ]
+        },
+        {
+          "code": "DATA 330",
+          "title": "Data Systems",
+          "units": 4,
+          "satisfies": [
+            "elective"
+          ]
+        },
+        {
+          "code": "SYS 401",
+          "title": "Operating Systems",
+          "units": 4,
+          "satisfies": [
+            "systems"
+          ]
+        },
+        {
+          "code": "SYS 455",
+          "title": "Distributed Storage",
+          "units": 4,
+          "satisfies": [
+            "systems"
+          ]
+        },
+        {
+          "code": "THY 302",
+          "title": "Algorithms",
+          "units": 4,
+          "satisfies": [
+            "theory"
+          ]
+        },
+        {
+          "code": "THY 340",
+          "title": "Complexity Theory",
+          "units": 4,
+          "satisfies": [
+            "theory"
+          ]
+        }
+      ],
+      "sources": [],
+      "state_writes": [],
+      "reversible": true,
+      "authorized": true,
+      "timestamp": 1793645021.0414531
+    },
+    {
+      "action_id": "act-91b39f62",
+      "stage": "researcher",
+      "tool": "get_course",
+      "args": {
+        "code": "CORE 101"
+      },
+      "result": {
+        "ok": true,
+        "code": "CORE 101",
+        "title": "Foundations of Computing",
+        "units": 4,
+        "prereqs": [],
+        "satisfies": [
+          "core"
+        ],
+        "sections": [
+          {
+            "section": "CORE101-A",
+            "days": "MWF",
+            "start": "09:00",
+            "end": "09:50",
+            "capacity": 30,
+            "seats_open": 30,
+            "waitlist": 0
+          }
+        ]
+      },
+      "sources": [],
+      "state_writes": [],
+      "reversible": true,
+      "authorized": true,
+      "timestamp": 1793645021.041462
+    },
+    {
+      "action_id": "act-2507a171",
+      "stage": "researcher",
+      "tool": "get_course",
+      "args": {
+        "code": "CORE 120"
+      },
+      "result": {
+        "ok": true,
+        "code": "CORE 120",
+        "title": "Data Structures",
+        "units": 4,
+        "prereqs": [
+          "CORE 101"
+        ],
+        "satisfies": [
+          "core"
+        ],
+        "sections": [
+          {
+            "section": "CORE120-A",
+            "days": "TR",
+            "start": "09:30",
+            "end": "10:50",
+            "capacity": 30,
+            "seats_open": 30,
+            "waitlist": 0
+          }
+        ]
+      },
+      "sources": [],
+      "state_writes": [],
+      "reversible": true,
+      "authorized": true,
+      "timestamp": 1793645021.041471
+    },
+    {
+      "action_id": "act-a42449b6",
+      "stage": "researcher",
+      "tool": "get_course",
+      "args": {
+        "code": "DATA 330"
+      },
+      "result": {
+        "ok": true,
+        "code": "DATA 330",
+        "title": "Data Systems",
+        "units": 4,
+        "prereqs": [
+          "CORE 101"
+        ],
+        "satisfies": [
+          "elective"
+        ],
+        "sections": [
+          {
+            "section": "DATA330-A",
+            "days": "MW",
+            "start": "14:00",
+            "end": "15:20",
+            "capacity": 2,
+            "seats_open": 0,
+            "waitlist": 1
+          }
+        ]
+      },
+      "sources": [],
+      "state_writes": [],
+      "reversible": true,
+      "authorized": true,
+      "timestamp": 1793645021.0414772
+    },
+    {
+      "action_id": "act-1058962d",
+      "stage": "researcher",
+      "tool": "get_course",
+      "args": {
+        "code": "SYS 401"
+      },
+      "result": {
+        "ok": true,
+        "code": "SYS 401",
+        "title": "Operating Systems",
+        "units": 4,
+        "prereqs": [
+          "CORE 120"
+        ],
+        "satisfies": [
+          "systems"
+        ],
+        "sections": [
+          {
+            "section": "SYS401-A",
+            "days": "TR",
+            "start": "11:00",
+            "end": "12:20",
+            "capacity": 3,
+            "seats_open": 2,
+            "waitlist": 0
+          }
+        ]
+      },
+      "sources": [],
+      "state_writes": [],
+      "reversible": true,
+      "authorized": true,
+      "timestamp": 1793645021.041485
+    },
+    {
+      "action_id": "act-bae75d88",
+      "stage": "researcher",
+      "tool": "get_course",
+      "args": {
+        "code": "SYS 455"
+      },
+      "result": {
+        "ok": true,
+        "code": "SYS 455",
+        "title": "Distributed Storage",
+        "units": 4,
+        "prereqs": [
+          "DATA 330"
+        ],
+        "satisfies": [
+          "systems"
+        ],
+        "sections": [
+          {
+            "section": "SYS455-A",
+            "days": "MW",
+            "start": "14:30",
+            "end": "15:50",
+            "capacity": 3,
+            "seats_open": 3,
+            "waitlist": 0
+          }
+        ]
+      },
+      "sources": [],
+      "state_writes": [],
+      "reversible": true,
+      "authorized": true,
+      "timestamp": 1793645021.0414941
+    },
+    {
+      "action_id": "act-2ae2a752",
+      "stage": "researcher",
+      "tool": "get_course",
+      "args": {
+        "code": "THY 302"
+      },
+      "result": {
+        "ok": true,
+        "code": "THY 302",
+        "title": "Algorithms",
+        "units": 4,
+        "prereqs": [
+          "CORE 101"
+        ],
+        "satisfies": [
+          "theory"
+        ],
+        "sections": [
+          {
+            "section": "THY302-A",
+            "days": "MWF",
+            "start": "10:00",
+            "end": "10:50",
+            "capacity": 3,
+            "seats_open": 2,
+            "waitlist": 0
+          },
+          {
+            "section": "THY302-B",
+            "days": "TR",
+            "start": "11:00",
+            "end": "12:20",
+            "capacity": 3,
+            "seats_open": 3,
+            "waitlist": 0
+          }
+        ]
+      },
+      "sources": [],
+      "state_writes": [],
+      "reversible": true,
+      "authorized": true,
+      "timestamp": 1793645021.041501
+    },
+    {
+      "action_id": "act-43212982",
+      "stage": "researcher",
+      "tool": "get_course",
+      "args": {
+        "code": "THY 340"
+      },
+      "result": {
+        "ok": true,
+        "code": "THY 340",
+        "title": "Complexity Theory",
+        "units": 4,
+        "prereqs": [
+          "THY 302"
+        ],
+        "satisfies": [
+          "theory"
+        ],
+        "sections": [
+          {
+            "section": "THY340-A",
+            "days": "TR",
+            "start": "14:00",
+            "end": "15:20",
+            "capacity": 3,
+            "seats_open": 3,
+            "waitlist": 0
+          }
+        ]
+      },
+      "sources": [],
+      "state_writes": [],
+      "reversible": true,
+      "authorized": true,
+      "timestamp": 1793645021.041507
+    },
+    {
+      "action_id": "act-c138b1bc",
+      "stage": "executor",
+      "tool": "enroll",
+      "args": {
+        "section": "SYS401-A"
+      },
+      "result": {
+        "ok": true,
+        "section": "SYS401-A"
+      },
+      "sources": [
+        "plan-c8b47794"
+      ],
+      "state_writes": [
+        "enrolled"
+      ],
+      "reversible": true,
+      "authorized": true,
+      "timestamp": 1793645021.042249
+    },
+    {
+      "action_id": "act-6cfea169",
+      "stage": "executor",
+      "tool": "enroll",
+      "args": {
+        "section": "THY302-A"
+      },
+      "result": {
+        "ok": true,
+        "section": "THY302-A"
+      },
+      "sources": [
+        "plan-c8b47794"
+      ],
+      "state_writes": [
+        "enrolled"
+      ],
+      "reversible": true,
+      "authorized": true,
+      "timestamp": 1793645021.042263
+    },
+    {
+      "action_id": "act-aecea606",
+      "stage": "executor",
+      "tool": "send_email",
+      "args": {
+        "to": "advisor@univ.example",
+        "subject": "Enrollment update",
+        "body": "Enrolled in: SYS401-A, THY302-A"
+      },
+      "result": {
+        "ok": true
+      },
+      "sources": [
+        "plan-c8b47794"
+      ],
+      "state_writes": [
+        "outbox"
+      ],
+      "reversible": false,
+      "authorized": true,
+      "timestamp": 1793645021.0422678
+    }
+  ],
+  "llm_calls": [
+    {
+      "call_id": "llm-c590cfaf",
+      "stage": "researcher",
+      "prompt_tokens": 865,
+      "completion_tokens": 479,
+      "latency_s": 4.601478576660156e-05,
+      "purpose": "work"
+    },
+    {
+      "call_id": "llm-bcb4bfa5",
+      "stage": "planner",
+      "prompt_tokens": 1062,
+      "completion_tokens": 90,
+      "latency_s": 0.000308990478515625,
+      "purpose": "work"
+    },
+    {
+      "call_id": "llm-f6617cb6",
+      "stage": "executor",
+      "prompt_tokens": 448,
+      "completion_tokens": 67,
+      "latency_s": 2.193450927734375e-05,
+      "purpose": "work"
+    }
+  ],
+  "stage_timings": {
+    "researcher": {
+      "start": 1793645021.041214,
+      "end": 1793645021.041682
+    },
+    "planner": {
+      "start": 1793645021.041687,
+      "end": 1793645021.04218
+    },
+    "executor": {
+      "start": 1793645021.0421891,
+      "end": 1793645021.042272
+    }
+  }
+}

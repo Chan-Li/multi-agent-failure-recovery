@@ -1,0 +1,13 @@
+{
+  "run_id": "fault-researcher-timeout-t000-r0",
+  "artifacts": [],
+  "messages": [],
+  "actions": [],
+  "llm_calls": [],
+  "stage_timings": {
+    "researcher": {
+      "start": 1793645028.600938,
+      "end": 1793645028.6009421
+    }
+  }
+}

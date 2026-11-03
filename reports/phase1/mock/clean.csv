@@ -1,0 +1,8 @@
+,n,success,latency_s,tokens,verify_tokens,false_alarms,researcher_exact
+mode=plain,63,1.0,0.01,8178.238,0.0,0.0,1.0
+mode=verify_all,63,1.0,0.023,17029.286,8851.048,0.0,1.0
+mode=verify_all_self,63,1.0,0.021,17029.286,8851.048,0.0,1.0
+difficulty=easy,18,1.0,0.006,8327.5,,,
+difficulty=example,3,1.0,0.003,3011.0,,,
+difficulty=hard,18,1.0,0.018,8550.167,,,
+difficulty=medium,24,1.0,0.009,8433.25,,,

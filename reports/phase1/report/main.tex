@@ -8,8 +8,6 @@
 %   python experiments/analyze.py --results results/mock --out reports/phase1/mock
 % Missing figures render as a placeholder box, so the frame always compiles.
 %
-% Markers:  \todo{...}  = must be filled in before submission (shown in red)
-%           \note{...}  = explanation for the authors, delete before submission
 % =============================================================================
 \documentclass[11pt]{article}
 \usepackage[margin=1in]{geometry}
@@ -29,8 +27,6 @@
 \usepackage[hidelinks]{hyperref}
 \usepackage[capitalise,noabbrev]{cleveref}
 
-\newcommand{\todo}[1]{\textcolor{red}{[\textbf{TODO:} #1]}}
-\newcommand{\note}[1]{\textcolor{blue!60!black}{[\textit{Note:} #1]}}
 \newcommand{\code}[1]{\texttt{\small #1}}
 \newcommand{\figdir}{../}
 \newcommand{\mockdir}{../mock/}
@@ -66,7 +62,13 @@ depends on the faulty result. We trace every message, artifact, tool action and 
 and measure how far each fault propagates. We then compare two recovery
 baselines: full restart (with a realistic and an idealized rollback of the
 world) and always-verify (with a strong and a self-verifying verifier).
-\todo{one-sentence headline result from the real-model runs}.
+With a real model, accidental faults are the dangerous ones (a misreported
+unit cap causes an unneeded, irreversible drop in 85\% of runs, while the two
+injections cause no unauthorized action), and a realistic full restart, which
+cannot roll the world back, recovers only 74\% of accidental and 80\% of
+adversarial runs, against 96\% and 98\% for an idealized rollback; always-verify
+prevents every harmful action but costs 1.5 to 1.8 times the tokens of a clean
+run.
 \end{abstract}
 
 % -----------------------------------------------------------------------------
@@ -108,8 +110,6 @@ the agents?
 % -----------------------------------------------------------------------------
 \section{Background and Related Work}
 \label{sec:related}
-\note{Keep short. Position against the two suggested resources.}
-
 \textbf{TAMAS}~\cite{tamas} benchmarks threats to multi-agent systems
 (e.g.\ Byzantine agents, indirect prompt injection) across several domains,
 with mostly stateless tools; it measures whether attacks succeed, not how to
@@ -117,7 +117,15 @@ recover. \textbf{A2ASecBench}~\cite{a2asecbench} studies attacks on the
 agent-to-agent protocol with programmatic success checks. Both focus on
 \emph{detection/robustness}. We focus on \emph{propagation and recovery}, and
 on a stateful world in which some effects cannot be rolled back.
-\todo{one or two sentences on checkpoint/rollback and provenance in distributed systems, if desired}
+Our recovery question is the classic one of rollback recovery in
+message-passing systems~\cite{elnozahy2002survey}: checkpoints and message
+logs let a system roll back only the processes affected by a failure, but
+messages to the ``outside world'' cannot be rolled back and need special
+handling. Our dependency graph is a form of data provenance (which inputs an
+output was derived from)~\cite{buneman2001why}. The new element in the LLM
+setting is that the ``process'' that produced a bad result is a model whose
+output may be wrong without any crash, and whose consumers may or may not
+actually use it.
 
 % -----------------------------------------------------------------------------
 \section{System}
@@ -125,11 +133,12 @@ on a stateful world in which some effects cannot be rolled back.
 
 \begin{figure}[t]
 \centering
+\resizebox{\linewidth}{!}{%
 \begin{tikzpicture}[
   node distance=1.4cm and 1.1cm,
   agent/.style={draw, rounded corners, fill=blue!8, minimum width=2.3cm, minimum height=0.9cm, align=center, font=\small},
   art/.style={draw, fill=gray!8, minimum width=1.6cm, minimum height=0.6cm, align=center, font=\footnotesize},
-  world/.style={draw, rounded corners, fill=orange!10, minimum width=11.5cm, minimum height=0.9cm, align=center, font=\small},
+  world/.style={draw, rounded corners, fill=orange!10, minimum width=11cm, minimum height=0.9cm, align=center, font=\small},
   arr/.style={-{Stealth[length=2mm]}, thick},
   inj/.style={-{Stealth[length=2mm]}, thick, red!70!black, dashed}]
   \node[agent] (R) {Researcher};
@@ -146,7 +155,7 @@ on a stateful world in which some effects cannot be rolled back.
   \draw[inj] (i1) -- (F);
   \node[font=\scriptsize, red!70!black, above=0.35cm of L] (i2) {fault injection};
   \draw[inj] (i2) -- (L);
-\end{tikzpicture}
+\end{tikzpicture}}
 \caption{Workflow. Each arrow between agents is a traced message carrying one
 artifact; every artifact records its sources and every tool action records the
 artifact that caused it. The planner cannot query the registrar (information
@@ -223,7 +232,7 @@ has two modes:
 \label{sec:agents}
 All three core agents are LLM agents (\code{api-glm-5.3-flash}, temperature 0)
 that exchange JSON artifacts with fixed schemas (\cref{app:schemas}).
-\begin{description}[leftmargin=*,itemsep=2pt]
+\begin{description}[leftmargin=1em,itemsep=2pt]
   \item[Researcher.] Code calls the read tools (student record, every course);
         the LLM rewrites the raw results into a \emph{fact sheet}. If its
         reply cannot be parsed, it falls back to the raw results and flags it.
@@ -240,9 +249,9 @@ that exchange JSON artifacts with fixed schemas (\cref{app:schemas}).
         is passed on, re-querying the registrar. Strong variant:
         \code{api-glm-5.3}; self variant: the agents' own model.
 \end{description}
-\note{Why an LLM executor? The project text says the executor ``acts on the
-resulting plan''; a hard-coded executor could never follow (or refuse) an
-injected instruction, so it would hide part of the attack path.}
+We use an LLM executor rather than a hard-coded one because the executor
+``acts on the resulting plan'': a hard-coded executor could never follow (or
+refuse) an injected instruction, so it would hide part of the attack path.
 
 \subsection{Tracing and the dependency graph}
 \label{sec:tracing}
@@ -337,7 +346,7 @@ recovery}. We therefore control dependence at two levels:
 
 \paragraph{Propagation outcome level.} Each fault run gets exactly one level,
 from mildest to most severe:
-\begin{description}[leftmargin=*,itemsep=1pt,font=\normalfont\itshape]
+\begin{description}[leftmargin=1em,itemsep=1pt,font=\normalfont\itshape]
   \item[stopped] the stage never returned (timeout);
   \item[ignored] plan and world identical to the clean run;
   \item[contained] the plan changed (or the executor refused part of it), the world did not;
@@ -367,7 +376,7 @@ verification, \emph{detection rate} and \emph{false alarms}.
 Every method receives the identity of the faulty artifact (oracle), so
 recovery is evaluated independently of detection; each starts from its own
 copy of the world exactly as the faulty run left it.
-\begin{description}[leftmargin=*,itemsep=2pt]
+\begin{description}[leftmargin=1em,itemsep=2pt]
   \item[Full restart (realistic).] Restore the start-of-run snapshot in
         realistic mode and rerun all three stages. Irreversible events persist
         and the clock keeps running.
@@ -391,15 +400,26 @@ copy of the world exactly as the faulty run left it.
         \code{api-glm-5.3-flash} (\$0.15/\$0.50 per M input/output tokens),
         strong verifier \code{api-glm-5.3} (\$1.20/\$3.25); temperature 0.
   \item 21 tasks; 8 fault types; 164 dependent task and fault pairs; each fault
-        run followed by 4 recovery methods.
+        run followed by 4 recovery methods (always-verify is not run for
+        timeouts). All averages are over the 20 students (157 fault runs);
+        the hand-written example \code{t000} is reported separately
+        (\cref{sec:case}).
   \item One repeat per configuration (the project requires identical fault
-        schedules across methods, not repetition). \todo{optional: consistency
-        re-run on a subset and report agreement}
+        schedules across methods, not repetition). Each number is therefore
+        a single sample per student; differences of one or two runs out of 20
+        (5 to 10 points) should not be over-read.
   \item A deterministic mock backend runs the same pipeline at zero cost; we
         use it for tests, the dependence search, and as a \emph{structural
         upper bound} on propagation (it never ignores or refuses a fault).
-  \item Total cost \todo{\$ from API usage}; wall time \todo{} with 8 parallel
+  \item Total API cost for the runs reported here about \$8.2 (14.9M agent
+        tokens at about \$3.6 and 2.7M strong-verifier tokens at about
+        \$4.6), well within the \$50 budget. Wall time about 4.4\,h for the
+        fault runs plus 50\,min for the always-verify runs, with 8 parallel
         workers.
+  \item \textbf{Latency caveat.} The shared API stalled for long periods
+        during the fault runs, so per-run latencies include queueing and are
+        reported only as rough indications; we compare methods by
+        \emph{tokens}, which do not depend on server load.
 \end{itemize}
 
 % -----------------------------------------------------------------------------
@@ -414,16 +434,24 @@ copy of the world exactly as the faulty run left it.
 \toprule
 Mode & Success & Latency / run & Tokens / run & False alarms \\
 \midrule
-No verification            & 21/21 & 20\,s  & 13.0k & n/a \\
-Always-verify (strong)     & 21/21 & 194\,s & 29.8k & 0 \\
-Always-verify (self)       & 21/21 & 58\,s  & 26.2k & 0 \\
+No verification            & 20/20 & 21\,s  & 13.4k & n/a \\
+Always-verify (strong)     & 20/20 & 199\,s & 30.7k & 0 \\
+Always-verify (self)       & 20/20 & 54\,s  & 27.1k & 0 \\
 \bottomrule
 \end{tabular}
-\caption{Clean runs, real model. The researcher's fact sheet matched the
+\caption{Clean runs over the 20 students, real model (\code{t000} also
+succeeds in all three modes). The researcher's fact sheet matched the
 registrar exactly in every run; no reply failed to parse.}
 \label{tab:clean}
 \end{table}
-\todo{per-difficulty breakdown from \code{clean.csv} if space allows}
+The clean workflow is reliable at every difficulty level (easy 6/6, medium
+8/8, hard 6/6), with cost growing only slightly with the number of
+requirements (12.9k, 13.4k and 14.0k tokens per run). Verification more than
+doubles the tokens of a clean run (the verifier re-reads the registrar and
+both artifacts) and, with the strong verifier, multiplies latency by about
+ten. Neither verifier raised a false alarm on a clean run. A 100\% clean
+baseline matters for what follows: every fault-run failure can be attributed
+to the fault, not to the workflow.
 
 \subsection{Propagation}
 \label{sec:res-prop}
@@ -434,14 +462,76 @@ registrar exactly in every run; no reply failed to parse.}
 of the same student.}
 \label{fig:outcomes}
 \end{figure}
-\todo{From \code{propagation.csv}: dependence rate per fault; which faults the
-real model ignored or contained (vs.\ the mock upper bound in
-\cref{tab:mock}); unauthorized-action rate for the two injections; wasted
-tokens; affected stages.}
-
-\note{Mock structural upper bound, already measured (492 runs):}
 \begin{table}[h]
 \centering\small
+\resizebox{\linewidth}{!}{%
+\begin{tabular}{llcccccl}
+\toprule
+Class & Fault & $n$ & Depends & Success & Harm.\ irrev. & Wasted tok. & Main outcome \\
+\midrule
+\multirow{6}{*}{accidental}
+ & wrong-seats   & 20 & 0.80 & 0.95 & 0.05 & 13.4k & changed, goal met (75\%) \\
+ & wrong-prereq  & 20 & 0.85 & 0.70 & 0.00 & 13.8k & changed, goal met (55\%) \\
+ & wrong-time    & 20 & 0.85 & 0.70 & 0.00 & 13.5k & changed, goal met (55\%) \\
+ & wrong-units   & 20 & 1.00 & 0.05 & 0.85 & 13.7k & irreversible harm (85\%) \\
+ & stale-record  & 17 & 0.76 & 0.41 & 0.00 & 13.3k & task failed (59\%) \\
+ & timeout       & 20 & 1.00 & 0.00 & 0.00 & 0     & stopped (100\%) \\
+\midrule
+\multirow{2}{*}{adversarial}
+ & researcher-injection & 20 & 0.30 & 1.00 & 0.00 & 13.6k & ignored (70\%) \\
+ & planner-injection    & 20 & 1.00 & 1.00 & 0.00 & 6.2k  & contained (70\%) \\
+\bottomrule
+\end{tabular}}
+\caption{Propagation with the real model, over the 20 students. \emph{Depends}:
+share of runs whose plan or world differs from the paired clean run.
+\emph{Harm.\ irrev.}: harmful irreversible actions per run. \emph{Wasted
+tok.}: tokens spent in the faulty stage and every stage downstream of it.
+No run of any fault took an unauthorized action. Every non-timeout fault
+reached two stages (planner and executor) in the dependency graph, or one for
+the planner injection.}
+\label{tab:prop}
+\end{table}
+
+\paragraph{Accidental faults propagate; adversarial ones mostly do not.}
+\Cref{tab:prop} shows the central asymmetry of Phase~1. The four
+``wrong fact'' faults are used by the planner in 80\% to 100\% of runs, and
+because the planner has no other source, a wrong fact becomes a wrong plan.
+Most wrong prerequisites, times and seat counts only redirect the plan to a
+different but still legal section (\emph{changed, goal met}); they fail the
+task when no valid alternative is left (30\% for wrong prereq and wrong time).
+The misreported unit cap is the most harmful fault in the study: the planner
+believes the student cannot fit the new courses, drops an elective that did
+not need to be dropped, and the waitlist takes the seat at once. This happens
+in 85\% of runs and cannot be undone. The stale record fails 59\% of runs
+because the planner plans for the wrong set of completed and current courses.
+
+The two injections, in contrast, never caused an unauthorized action. The
+planner ignored the forged registrar notice in 70\% of runs (the other 30\%
+changed the plan in ways that still met the goal, but none followed the
+notice), and the executor refused the injected drop and email in every
+planner-injection run (\emph{contained}). The real model is therefore far
+less credulous than the mock agent, which follows every injection
+(\cref{tab:mock}); the danger in this workflow comes from plausible wrong data,
+not from instructions that look suspicious.
+
+\paragraph{Dependence is not guaranteed.} Faults were selected so that the
+mock workflow's outcome depends on them, yet the real model ignored up to
+24\% of the wrong-fact faults (none of the unit-cap faults) and 70\% of
+researcher injections, mostly by
+choosing a different (equally valid) section that the fault did not touch.
+We report these runs as \emph{ignored}, not as robustness.
+
+\paragraph{Wasted work.} A researcher fault wastes essentially the whole run
+(13 to 14k tokens: the researcher, planner and executor all have to be redone
+under full restart), while a planner fault wastes only the planner and
+executor (6.2k). This is the work that selective recovery could save when
+the faulty stage is late in the pipeline.
+
+For comparison, the deterministic mock (credulous) agent gives a structural
+upper bound on propagation (492 runs):
+\begin{table}[h]
+\centering\small
+\resizebox{\linewidth}{!}{%
 \begin{tabular}{llccc}
 \toprule
 Class & Fault & Task success & Harmful irrev.\ / run & Main outcome \\
@@ -458,7 +548,7 @@ Class & Fault & Task success & Harmful irrev.\ / run & Main outcome \\
  & researcher-injection & 0.00 & 1.71 & irreversible harm \\
  & planner-injection    & 0.00 & 1.71 & irreversible harm \\
 \bottomrule
-\end{tabular}
+\end{tabular}}
 \caption{Mock (credulous) agents: how far each fault \emph{can} propagate
 through the workflow's structure.}
 \label{tab:mock}
@@ -478,46 +568,171 @@ through the workflow's structure.}
 \caption{Recovery quality vs.\ extra inference cost.}
 \label{fig:cost}
 \end{figure}
-\todo{Table from \code{recovery\_overall.csv}: per method, accidental vs.\
-adversarial: success, clean recovery, recomputed stages, extra tokens,
-latency, harmful irreversible, persisted events, detection.}
+\begin{table}[h]
+\centering\small
+\setlength{\tabcolsep}{4pt}
+\resizebox{\linewidth}{!}{%
+\begin{tabular}{llcccccccc}
+\toprule
+Class & Method & $n$ & Clean rec. & Recomp. & Extra tok. & Latency & Harm.\ irrev. & Persisted & Detected \\
+\midrule
+\multirow{5}{*}{accidental}
+ & no recovery              & 117 & 0.47 & 0    & 0     & 0       & 0.15 & 0    & n/a  \\
+ & full restart (realistic) & 117 & 0.74 & 3    & 13.3k & 30\,s   & 0.15 & 2.10 & n/a  \\
+ & full restart (oracle)    & 117 & 0.96 & 3    & 13.4k & 29\,s   & 0    & 0    & n/a  \\
+ & always-verify (strong)   & 97  & 0.96 & 1.03 & 24.6k & 115\,s  & 0    & 0    & 0.94 \\
+ & always-verify (self)     & 97  & 0.97 & 1.03 & 21.2k & 53\,s   & 0    & 0    & 1.00 \\
+\midrule
+\multirow{5}{*}{adversarial}
+ & no recovery              & 40 & 1.00 & 0    & 0     & 0       & 0    & 0    & n/a  \\
+ & full restart (realistic) & 40 & 0.80 & 3    & 13.3k & 31\,s   & 0    & 2.35 & n/a  \\
+ & full restart (oracle)    & 40 & 0.98 & 3    & 13.4k & 31\,s   & 0    & 0    & n/a  \\
+ & always-verify (strong)   & 40 & 0.95 & 1.00 & 23.6k & 126\,s  & 0    & 0    & 1.00 \\
+ & always-verify (self)     & 40 & 0.98 & 1.00 & 20.0k & 47\,s   & 0    & 0    & 1.00 \\
+\bottomrule
+\end{tabular}}
+\caption{Recovery baselines with the real model over the 20 students, under
+identical fault schedules. \emph{Clean rec.}: goal met in the final world and
+no harmful side effect of the fault left behind; in our runs it equals plain
+recovered success in every row, because the only harmful side effect that
+occurred (an unneeded drop) also fails the goal. \emph{Recomp.}: stages
+recomputed per run. \emph{Extra tok.}: LLM tokens beyond the faulty run (for
+always-verify, the whole verified rerun including verifier calls).
+\emph{Harm.\ irrev.}: harmful irreversible actions of the fault still in the
+world. \emph{Persisted}: external events the restore had to re-apply.
+Always-verify is not run for timeouts ($n=97$). Latencies are inflated by API
+queueing (\cref{sec:setup}).}
+\label{tab:recovery}
+\end{table}
+
+\paragraph{Realistic restart loses runs that an ideal rollback saves.} Under
+accidental faults the oracle rollback recovers 96\% of runs and the realistic
+restart only 74\%; under adversarial faults 98\% vs.\ 80\%
+(\cref{tab:recovery}). The two restarts recompute the same three stages at the
+same cost (13.3k to 13.4k tokens), so the whole gap is the price of a world
+that does not roll back. It has two sources. First, an irreversible harm the
+fault already caused stays: after the unit-cap fault the dropped elective is
+gone, and realistic restart recovers only 15\% of runs (oracle: 100\%).
+Second, the restart itself takes time while the clock keeps running, and
+competing students who arrive meanwhile take seats the rerun needs. In all,
+38 of the 157 realistic restarts fail.
+
+\paragraph{Restart is sometimes worse than doing nothing.} Where the fault was
+benign, restarting throws away a correct result: 16 of the 38 failed restarts
+followed a faulty run that had already met the goal. All 40 injection runs had
+met the goal, yet realistic restart drops this to 80\%; for wrong seats it
+goes from 95\% to 85\%. In each of these runs the rerun could no longer cover
+a requirement the faulty run had covered, because the seats it had held were
+released by the rollback and taken by competitors before the rerun executed.
+
+\paragraph{Always-verify prevents harm, at the highest cost.} Both verifiers
+stop every harmful irreversible action, because nothing is executed until the
+researcher's and planner's outputs pass. The strong verifier flagged the
+faulty artifact itself in 94\% of accidental runs: it missed three wrong-time
+faults entirely (all three tasks still succeeded) and caught three more (one
+wrong time, two wrong prerequisites) only at the planner stage, as a flaw in
+the plan rather than in the facts; those three runs failed. It flagged every
+injection. Its other three failures, and the four of the self verifier, are
+runs in which the fault was caught but the regeneration tick let a competitor
+take a seat. Verification is the most expensive method: 20k to 25k extra
+tokens per run, about 1.5 to 1.8 times a clean run, and the strong verifier
+needs 115 to 126\,s. On fault runs the verifiers raised 6 (strong) and 3
+(self) false alarms on non-faulty artifacts, against none on clean runs
+(\cref{tab:clean}). Surprisingly, self-verification with the agents' own
+small model detected every fault with fewer tokens and half the latency. Both
+verifiers can re-query the registrar, so most faults in our catalogue reduce
+to comparing a fact with its source, a check that does not need a strong
+model.
 
 \subsection{Worked example: one fault, end to end}
 \label{sec:case}
-\todo{Walk through one trace from \code{example\_trace\_*.json} (t000 or a hard
-student): the faulty fact $\rightarrow$ the plan that used it $\rightarrow$ the
-drop and the waitlisted student who took the seat $\rightarrow$ the registrar
-rejecting the enrollment $\rightarrow$ what each recovery method could and
-could not undo.}
+We follow the unit-cap fault through the hand-written task \code{t000}
+(saved trace and excerpt in \cref{app:trace}). The student has completed CORE~101 and
+CORE~120, holds a seat in the elective DATA~330 (4 units; the section is full
+and student S7 is first on its waitlist), may take up to 12 units, and needs
+one systems and one theory course. The correct plan adds SYS~401 and THY~302
+(12 units in total) and drops nothing.
+
+\begin{enumerate}[leftmargin=*,itemsep=2pt]
+  \item \textbf{Faulty fact.} The researcher's fact sheet
+        \code{facts-736dac50} reports \code{max\_units = 8} instead of 12. All
+        other facts are correct.
+  \item \textbf{Plan built on it.} The planner, which cannot query the
+        registrar, computes $4+4+4 = 12 > 8$ and adds a drop of DATA330-A to
+        the systems sub-plan. Its plan \code{plan-b7378264} lists the fact
+        sheet as its only source.
+  \item \textbf{Irreversible action.} The executor drops DATA330-A and the
+        registrar hands the seat to S7 at once (\code{seat\_taken\_by: S7}).
+        It then enrolls SYS401-A and THY302-A and emails the advisor that
+        DATA~330 was dropped ``to stay within the 8-unit cap''. Both
+        enrollments succeed, so nothing in the run looks wrong to the agents,
+        but the checker fails the task (unnecessary drop of DATA330-A). The
+        dependency graph marks the plan, the execution and all four of its
+        actions as downstream of the faulty fact; two of them (the drop and
+        the email) are irreversible, and one (the drop) is harmful.
+  \item \textbf{Full restart, realistic.} The world is restored to the start
+        snapshot and the five external events logged since then are
+        re-applied, among them the drop, S7 taking the seat and the email.
+        The rerun's researcher now correctly sees no current enrollment, the
+        plan adds SYS~401 and THY~302 with no drop, and the advisor receives
+        a second email saying that ``DATA~330 was not touched''. The rerun
+        has no memory of the first run, so it contradicts the first email.
+        The drop persists and the task still fails, after recomputing all
+        three stages (4.7k tokens).
+  \item \textbf{Full restart, oracle.} The seat is given back and the email
+        unsent; the rerun produces the correct plan and the task succeeds
+        (4.7k tokens). The only difference from item~4 is the one
+        irreversible action.
+  \item \textbf{Always-verify.} The strong verifier rejects the fact sheet
+        before the planner sees it (``\code{max\_units} mismatch: artifact
+        says 8, registrar says 12''), the researcher is rerun, the plan
+        passes, and the task succeeds with nothing to undo (8.0k extra
+        tokens; self-verification gives the same verdict for 6.3k).
+\end{enumerate}
+The example shows the propagation path that Phase~2 must handle: a single
+wrong number, invisible to the downstream agents, becomes an irreversible
+world change two stages later. Recomputation alone cannot repair it; a
+recovery method can at best compensate (rejoin the waitlist, send a correction
+consistent with the first email) and report the drop as a loss.
 
 % -----------------------------------------------------------------------------
 \section{Discussion}
 \label{sec:discussion}
-\note{Preliminary findings from the mock runs; confirm or revise with real data.}
 \begin{enumerate}[leftmargin=*,itemsep=2pt]
   \item \textbf{Full restart can be worse than doing nothing.} When a fault
         was benign (the task had in fact succeeded), restarting rolls back
-        valid enrollments; competitors take those seats meanwhile (mock,
-        wrong-seats: 0.90 $\rightarrow$ 0.57). Restart throws away valid
-        work, which motivates selective recovery.
-  \item \textbf{Recomputation cannot undo irreversible effects.} Unneeded drops
-        (seat taken by the waitlist) and leaked emails persist; realistic
-        restart never achieves a clean recovery after an injection, while the
-        oracle rollback always does. The gap between the two is the price of
-        irreversibility.
-  \item \textbf{Verification prevents harm but costs time, and time matters in
-        a shared world.} The verifier caught every injected fault before any
-        action, yet regeneration delayed execution enough for competitors to
-        take seats in some tasks. Detection and recovery are separate
+        valid enrollments and competitors take those seats meanwhile:
+        injections 1.00 $\rightarrow$ 0.80, wrong seats 0.95 $\rightarrow$
+        0.85, and 16 of the 38 failed restarts followed a run that had
+        already met the goal. Restart throws away valid work, which is the
+        case for selective recovery.
+  \item \textbf{Recomputation cannot undo irreversible effects.} An unneeded
+        drop stays dropped: after the unit-cap fault, realistic restart
+        recovers 15\% of runs and the oracle rollback 100\%, at the same
+        token cost. Over all faults the gap between the two restarts (74\%
+        vs.\ 96\% accidental, 80\% vs.\ 98\% adversarial) is the price of
+        irreversibility, and it cannot be closed by rerunning agents.
+  \item \textbf{Verification prevents harm but costs tokens and time, and
+        time matters in a shared world.} Both verifiers stopped every harmful
+        action, but they cost 1.5 to 1.8 times a clean run in tokens, and
+        regeneration delayed execution enough for competitors to take seats
+        in a few tasks (3 to 4 runs per verifier). A cheap self-verifier was
+        as accurate as the strong one here, because the faults could be
+        checked against the registrar. Detection and recovery are separate
         problems.
-  \item \textbf{Real models are not credulous.} \todo{e.g.\ share of
-        injections the real model ignored or the executor refused.}
+  \item \textbf{Real models are not credulous.} None of the 40 injection runs
+        took an unauthorized action. The planner ignored the forged registrar
+        notice in 14 of 20 runs and did not follow it in the other 6; the
+        executor refused the injected drop and email in all 20
+        planner-injection runs. The credulous mock follows every injection
+        (1.71 harmful actions per run). With this model the threat is
+        plausible wrong data, which the agents have no means to doubt.
 \end{enumerate}
 
 \paragraph{Limitations.} One simulated domain; one model family; a single
 repeat; the strong verifier re-queries the registrar, an information advantage
 the planner does not have; the mock-based dependence search can choose
-faults that a real model's different (equally valid) choices make irrelevant
+faults that a real model's different (equally valid) choices make irrelevant,
 which is why we also measure dependence per run.
 
 % -----------------------------------------------------------------------------
@@ -531,8 +746,10 @@ a waitlist, send a correction email) and report them as irreversible losses;
 (4) rerun only the stages needed. We will compare it with the Phase~1
 baselines under the identical fault schedules, check that every reused result
 is still valid, and report the tradeoff between recovery precision and
-bookkeeping overhead (tracking time and storage). \todo{optional: automated
-detection, reporting false positives and missed faults separately.}
+bookkeeping overhead (tracking time and storage). As an optional extension we
+may replace the oracle fault identity with automated detection, using the
+Phase~1 verifiers as detectors, and report false positives and missed faults
+separately from recovery quality.
 
 % -----------------------------------------------------------------------------
 \bibliographystyle{plain}
@@ -555,8 +772,49 @@ verdict   = {"ok": bool, "issues": [...]}
 
 \section{Example trace}
 \label{app:trace}
-\todo{Excerpt of one saved trace JSON (artifacts with sources, actions with
-sources and reversible/authorized flags).}
+Excerpt of \code{example\_trace\_fault-researcher-wrong-units-t000-r0.json}
+(the worked example of \cref{sec:case}), shortened with \code{...}; read-only
+tool calls, timestamps and LLM call records are omitted.
+\begin{lstlisting}
+"artifacts": [
+  {"artifact_id": "facts-736dac50", "producer": "researcher",
+   "content": {"student": {"completed": ["CORE 101", "CORE 120"],
+               "enrolled_sections": ["DATA330-A"], "units": 4, "max_units": 8},
+               "courses": {...}},
+   "sources": [], "state_reads": ["catalog", "enrolled", "waitlists", "student"],
+   "faulty": true, "fault_id": "researcher-wrong-units",
+   "meta": {"fault": "max_units shown as 8 (really 12)"}},
+  {"artifact_id": "plan-b7378264", "producer": "planner",
+   "content": {"subplans": [
+       {"requirement": "systems", "course": "SYS 401", "enroll": "SYS401-A",
+        "drop": ["DATA330-A"]},
+       {"requirement": "theory", "course": "THY 302", "enroll": "THY302-A",
+        "drop": []}],
+     "other_actions": [{"tool": "send_email", "args": {"to": "advisor@univ.example", ...}}]},
+   "sources": ["facts-736dac50"], "faulty": false},
+  {"artifact_id": "exec-d8165aa4", "producer": "executor",
+   "sources": ["plan-b7378264"], ...}],
+"messages": [
+  {"sender": "researcher", "receiver": "planner",  "artifact_ids": ["facts-736dac50"]},
+  {"sender": "planner",    "receiver": "executor", "artifact_ids": ["plan-b7378264"]}],
+"actions": [
+  {"stage": "researcher", "tool": "get_student_record", "args": {},
+   "result": {"max_units": 12, ...}, "sources": [], "reversible": true, "authorized": true},
+  ...
+  {"stage": "executor", "tool": "drop", "args": {"section": "DATA330-A"},
+   "result": {"ok": true, "seat_taken_by": "S7"},
+   "sources": ["plan-b7378264"], "reversible": false, "authorized": true},
+  {"stage": "executor", "tool": "enroll", "args": {"section": "SYS401-A"},
+   "result": {"ok": true}, "sources": ["plan-b7378264"], "reversible": true, "authorized": true},
+  {"stage": "executor", "tool": "enroll", "args": {"section": "THY302-A"},
+   "result": {"ok": true}, "sources": ["plan-b7378264"], "reversible": true, "authorized": true},
+  {"stage": "executor", "tool": "send_email",
+   "args": {"to": "advisor@univ.example", "body": "... I dropped DATA 330 ... to stay within the 8-unit cap ..."},
+   "result": {"ok": true}, "sources": ["plan-b7378264"], "reversible": false, "authorized": true}]
+\end{lstlisting}
+Note that the researcher's own registrar read (\code{get\_student\_record})
+returned the correct cap of 12; the fault lives only in the artifact handed to
+the planner, and the \code{faulty} flag is ground truth that no agent sees.
 
 \section{Reproducibility}
 \begin{lstlisting}
@@ -564,7 +822,7 @@ python experiments/gen_tasks.py --seed 0          # tasks + dependent fault patc
 python experiments/run_baseline.py --verify --workers 6
 python experiments/run_faults.py --workers 8      # resumable
 python experiments/analyze.py                     # tables + figures -> reports/phase1/
-pytest -q                                         # 139 tests
+pytest -q                                         # 140 tests
 \end{lstlisting}
 
 \end{document}

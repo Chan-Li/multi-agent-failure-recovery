@@ -249,6 +249,11 @@ that exchange JSON artifacts with fixed schemas (\cref{app:schemas}).
         is passed on, re-querying the registrar. Strong variant:
         \code{api-glm-5.3}; self variant: the agents' own model.
 \end{description}
+The other agents also fall back on an unparseable reply, and flag it: the
+planner to an empty plan, the executor to no tool calls, and the verifier to
+a pass. A verifier parse failure can therefore hide a fault but never raise a
+false alarm, and a planner parse failure makes the run fail with no action
+taken.
 We use an LLM executor rather than a hard-coded one because the executor
 ``acts on the resulting plan'': a hard-coded executor could never follow (or
 refuse) an injected instruction, so it would hide part of the attack path.
@@ -415,12 +420,26 @@ copy of the world exactly as the faulty run left it.
         Every propagation label therefore compares a fault run with
         \emph{all three} clean runs of that student, and a plan counts as
         changed only if it matches none of them.
+  \item \textbf{Output budgets and response audit.} Both models reason
+        before answering, and the hidden reasoning counts against the output
+        budget. Budgets: researcher 12k tokens (it copies the whole catalog),
+        planner and executor 4096, verifiers 16k. A first strong-verifier run
+        at 4096 tokens hit the cap in 6 of 42 calls and returned empty
+        replies, which would have counted as missed detections; we discarded
+        it and reran every verifier run at 16k. We then audited all 3,535 LLM
+        calls behind the reported results for unparseable, empty and
+        truncated replies (\code{experiments/audit\_llm.py}). No reply was
+        empty, no researcher, executor or verifier reply failed to parse, and
+        the largest outputs used 26\% (researcher), 16\% (executor) and 44\%
+        (strong verifier) of their budgets. The only problems are two planner
+        replies that used the full 4096 tokens and could not be parsed, both
+        in fault runs without recovery (\cref{sec:res-prop}).
   \item A deterministic mock backend runs the same pipeline at zero cost; we
         use it for tests, the dependence search, and as a \emph{structural
         upper bound} on propagation (it never ignores or refuses a fault).
-  \item Total API cost for the runs reported here about \$8.3 (15.5M agent
-        tokens at about \$3.7 and 2.7M strong-verifier tokens at about
-        \$4.6), well within the \$50 budget. Wall time about 4.4\,h for the
+  \item Total API cost for the runs reported here about \$9.0 (15.8M agent
+        tokens at about \$3.8 and 3.1M strong-verifier tokens at about
+        \$5.2), well within the \$50 budget. Wall time about 4.4\,h for the
         fault runs plus 50\,min for the always-verify runs, with 8 parallel
         workers.
   \item \textbf{Latency caveat.} The shared API stalled for long periods
@@ -442,7 +461,7 @@ copy of the world exactly as the faulty run left it.
 Mode & Success & Latency / run & Tokens / run & False alarms \\
 \midrule
 No verification            & 60/60 & 26\,s  & 13.4k & n/a \\
-Always-verify (strong)     & 20/20 & 199\,s & 30.7k & 0 \\
+Always-verify (strong)     & 20/20 & 258\,s & 31.2k & 1 \\
 Always-verify (self)       & 20/20 & 54\,s  & 27.1k & 0 \\
 \bottomrule
 \end{tabular}
@@ -457,7 +476,9 @@ The clean workflow is reliable at every difficulty level (easy 18/18, medium
 requirements (12.9k, 13.4k and 14.0k tokens per run). Verification more than
 doubles the tokens of a clean run (the verifier re-reads the registrar and
 both artifacts) and, with the strong verifier, multiplies latency by about
-ten. Neither verifier raised a false alarm on a clean run. The clean
+ten. On clean runs the self verifier raised no false alarm and the strong
+verifier one (in 40 verdicts: it rejected a valid plan, which was regenerated
+and still succeeded). The clean
 baseline is high but not perfect: the oracle restarts of \cref{sec:res-recovery}
 start from exactly the clean initial world and are in effect 157 more clean
 runs, of which 151 (96\%) succeed. Together, 211 of 217 clean runs succeed
@@ -516,6 +537,19 @@ believes the student cannot fit the new courses, drops an elective that did
 not need to be dropped, and the waitlist takes the seat at once. This happens
 in 85\% of runs and cannot be undone. The stale record fails 59\% of runs
 because the planner plans for the wrong set of completed and current courses.
+
+Two failures have a different mechanism. In one wrong-prerequisite run
+(\code{t001}) and one unit-cap run (\code{t018}) the planner spent its whole
+4096-token budget reasoning and returned no parseable plan, so nothing was
+executed. The fault is the cause: on the same two students the planner used
+350 to 1,350 tokens in every other run (clean runs, the other faults, and the
+recoveries of these same faults, where it saw correct facts), and the only
+other plain fault runs above 2,000 tokens are also wrong-prerequisite,
+wrong-time and unit-cap runs. A wrong fact can make the plan look infeasible,
+and the planner then searches until it runs out of budget. With a larger
+budget these two runs might instead have produced a plan, possibly a harmful
+one; they account for 1 of the 6 wrong-prerequisite failures and 1 of the 2
+unit-cap failures without harm.
 
 The two injections, in contrast, never caused an unauthorized action. The
 planner ignored the forged registrar notice in 85\% of runs (the other 15\%
@@ -614,7 +648,7 @@ occurred (an unneeded drop) also fails the goal. \emph{Recomp.}: stages
 recomputed per run. \emph{Extra tok.}: for full restart, the tokens of the
 rerun on top of the faulty run; for always-verify, the overhead over an
 unverified run (verifier calls plus regenerations). Always-verify pays most of
-this overhead on every run, faulty or not (17.4k and 13.6k tokens per clean
+this overhead on every run, faulty or not (17.5k and 13.6k tokens per clean
 run, \cref{tab:clean}), while a restart is paid only when a fault occurs.
 \emph{Harm.\ irrev.}: harmful irreversible actions of the fault still in the
 world. \emph{Persisted}: external events the restore had to re-apply.
@@ -665,8 +699,8 @@ runs in which the fault was caught but the regeneration tick let a competitor
 take a seat. Verification is the most expensive method: 20k to 25k extra
 tokens per run, about 1.5 to 1.8 times a clean run, and the strong verifier
 needs 115 to 126\,s. On fault runs the verifiers raised 6 (strong) and 3
-(self) false alarms on non-faulty artifacts, against none on clean runs
-(\cref{tab:clean}). Self-verification with the agents' own small model
+(self) false alarms on non-faulty artifacts, against one (strong) and none
+(self) on clean runs (\cref{tab:clean}). Self-verification with the agents' own small model
 flagged the faulty artifact in every run, with fewer tokens and half the
 latency. Its recovered success is not distinguishable from the strong
 verifier's, however (6 vs.\ 4 discordant runs, $p=0.75$), nor from the oracle
@@ -776,7 +810,10 @@ runs; one injection template, against agents whose prompts state the goal's
 constraints; the strong verifier re-queries the registrar, an information advantage
 the planner does not have; the mock-based dependence search can choose
 faults that a real model's different (equally valid) choices make irrelevant,
-which is why we also measure dependence per run.
+which is why we also measure dependence per run; fixed output budgets, under
+which two faulty inputs exhausted the planner's budget, and traces that record
+token counts but not the raw reply or the API's stop reason (Phase~2 will log
+both).
 
 % -----------------------------------------------------------------------------
 \section{Plan for Phase 2: Dependency-Aware Invalidation}
@@ -865,7 +902,10 @@ python experiments/gen_tasks.py --seed 0          # tasks + dependent fault patc
 python experiments/run_baseline.py --verify --workers 6
 python experiments/run_baseline.py --repeats 3 --workers 6   # 2 more clean runs per task
 python experiments/run_faults.py --workers 8      # resumable
+python experiments/run_faults.py --methods verify_all,verify_all_self \
+    --out faults_verify.jsonl --workers 8         # verifiers at 16k tokens
 python experiments/analyze.py                     # tables + figures -> reports/phase1/
+python experiments/audit_llm.py                   # parse failures, budget hits
 pytest -q                                         # 140 tests
 \end{lstlisting}
 

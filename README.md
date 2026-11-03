@@ -27,15 +27,28 @@ reports/phase1/           Phase 1 analysis
 ## Setup
 ```bash
 uv venv --python 3.11 && source .venv/bin/activate
-uv pip install -r requirements.txt
+uv pip install -r requirements.lock      # exact versions used for Phase 1
+# (requirements.txt has the loose ranges)
 ```
+The real-model runs need `OPENAI_API_KEY` and `OPENAI_BASE_URL` in a local
+`.env` (git-ignored). `configs/mock.yaml` runs everything with the
+deterministic mock backend at no cost.
 
 ## Run (Phase 1)
 ```bash
-python experiments/run_baseline.py
-python experiments/run_faults.py
-python experiments/analyze.py
+python experiments/gen_tasks.py --seed 0                      # tasks + dependent fault patches
+python experiments/run_baseline.py --verify --workers 6       # clean runs, plain + both verifiers
+python experiments/run_baseline.py --repeats 3 --workers 6    # 2 more clean runs per task (noise floor)
+python experiments/run_faults.py --workers 8                  # fault runs + recovery baselines (resumable)
+python experiments/run_faults.py --methods verify_all,verify_all_self \
+    --out faults_verify.jsonl --workers 8                     # verify-only rerun, merged by analyze.py
+python experiments/analyze.py                                 # tables, figures, summary -> reports/phase1/
+pytest -q
 ```
+Mock version: add `--config configs/mock.yaml` to the run scripts and
+`--results results/mock --out reports/phase1/mock` to `analyze.py`.
+Raw results live in `results/` (git-ignored, archived separately); see
+`results/RUN_INFO.md` for how and when they were produced.
 
 ## Status
 Phase 1 complete: workflow, fault injection, tracing, full-restart and

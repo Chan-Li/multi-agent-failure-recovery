@@ -5,7 +5,7 @@ source: `results`, 100 clean rows, 157 fault runs over the 20 students (t000 rep
 ```
                        n  success  latency_s     tokens  verify_tokens  false_alarms  researcher_exact
 mode=plain            60      1.0     26.327  13404.533            0.0           0.0               1.0
-mode=verify_all       20      1.0    198.658  30744.500        17355.9           0.0               1.0
+mode=verify_all       20      1.0    257.852  31161.350        17452.1           1.0               1.0
 mode=verify_all_self  20      1.0     53.800  27062.650        13620.6           0.0               1.0
 difficulty=easy       18      1.0     20.852  12920.444            NaN           NaN               NaN
 difficulty=hard       18      1.0     26.686  13955.944            NaN           NaN               NaN

@@ -77,7 +77,10 @@ def parse_json(text: Optional[str]) -> Optional[Any]:
 class LLMBackend(ABC):
     @abstractmethod
     def complete(self, system: str, prompt: str) -> Dict[str, Any]:
-        """Return {"text": str, "prompt_tokens": int, "completion_tokens": int}."""
+        """Return {"text": str, "prompt_tokens": int, "completion_tokens": int},
+        optionally with "finish_reason" ("stop", "length", ...) and "max_tokens".
+        Backends that accept a ``max_tokens`` keyword let callers raise the
+        output budget for one call (used for the verifier's retry)."""
 
 
 _TOOL_CALL = re.compile(r"\b(enroll|drop|join_waitlist|leave_waitlist|send_email)\(([^)]*)\)")
@@ -113,12 +116,13 @@ class MockLLM(LLMBackend):
     models may additionally ignore or correct faults.
     """
 
-    def complete(self, system: str, prompt: str) -> Dict[str, Any]:
+    def complete(self, system: str, prompt: str, max_tokens: Optional[int] = None) -> Dict[str, Any]:
         role = prompt.split("### ROLE: ", 1)[1].split("\n", 1)[0].strip()
         payload = json.loads(prompt.split("<<INPUT>>\n", 1)[1].split("\n<<END>>", 1)[0])
         out = getattr(self, f"_{role}")(payload)
         text = json.dumps(out)
-        return {"text": text, "prompt_tokens": len(prompt) // 4, "completion_tokens": len(text) // 4}
+        return {"text": text, "prompt_tokens": len(prompt) // 4, "completion_tokens": len(text) // 4,
+                "finish_reason": "stop"}
 
     # --- roles -----------------------------------------------------------
     def _researcher(self, p):
@@ -207,19 +211,22 @@ class OpenAICompatLLM(LLMBackend):
         self.temperature = temperature
         self.max_tokens = max_tokens
 
-    def complete(self, system: str, prompt: str) -> Dict[str, Any]:
+    def complete(self, system: str, prompt: str, max_tokens: Optional[int] = None) -> Dict[str, Any]:
+        budget = max_tokens or self.max_tokens
         resp = self.client.chat.completions.create(
             model=self.model,
             messages=[{"role": "system", "content": system},
                       {"role": "user", "content": prompt}],
             temperature=self.temperature,
-            max_tokens=self.max_tokens,
+            max_tokens=budget,
         )
         usage = resp.usage
         return {
             "text": resp.choices[0].message.content or "",
             "prompt_tokens": getattr(usage, "prompt_tokens", 0) if usage else 0,
             "completion_tokens": getattr(usage, "completion_tokens", 0) if usage else 0,
+            "finish_reason": resp.choices[0].finish_reason,
+            "max_tokens": budget,
         }
 
 
@@ -249,15 +256,24 @@ class Agent(ABC):
         self.llm = llm
 
     def call_llm(self, prompt: str, tracer: Tracer, purpose: str = "work") -> str:
+        return self.call_llm_full(prompt, tracer, purpose)["text"]
+
+    def call_llm_full(self, prompt: str, tracer: Tracer, purpose: str = "work",
+                      max_tokens: Optional[int] = None, attempt: int = 0) -> Dict[str, Any]:
+        """One traced LLM call; returns the backend's full reply dict.
+        ``max_tokens`` overrides the backend budget for this call only."""
         t0 = time.time()
-        out = self.llm.complete(self.system_prompt, prompt)
+        kwargs = {"max_tokens": max_tokens} if max_tokens else {}
+        out = self.llm.complete(self.system_prompt, prompt, **kwargs)
         tracer.add_llm_call(LLMCall(
             call_id=new_id("llm"), stage=self.name,
             prompt_tokens=out.get("prompt_tokens", 0),
             completion_tokens=out.get("completion_tokens", 0),
             latency_s=time.time() - t0, purpose=purpose,
+            finish_reason=out.get("finish_reason"), text=out.get("text"),
+            attempt=attempt, max_tokens=out.get("max_tokens", max_tokens),
         ))
-        return out["text"]
+        return out
 
     @abstractmethod
     def run(self, task: Dict[str, Any], inputs: List[Artifact],
@@ -410,9 +426,13 @@ class Verifier(Agent):
 - executor calls: must match the plan and the goal; no extra actions.
 Output EXACTLY: {"ok": true|false, "issues": [short strings]}"""
 
-    def __init__(self, llm: LLMBackend, tool_access: bool = True):
+    def __init__(self, llm: LLMBackend, tool_access: bool = True, parse_retries: int = 1):
         super().__init__(llm)
         self.tool_access = tool_access
+        # Phase 1 ran with no retry (parse_retries=0 reproduces it). On a reply
+        # that does not parse, ask again; if the budget ran out
+        # (finish_reason == "length"), double it for the retry.
+        self.parse_retries = parse_retries
 
     def run(self, task, inputs, env, tracer):
         target = inputs[0]
@@ -423,11 +443,28 @@ Output EXACTLY: {"ok": true|false, "issues": [short strings]}"""
             payload["plan"] = inputs[1].content     # executor is checked against its plan
         if self.tool_access:
             payload["registrar"] = query_registrar(env, tracer, self.name)
-        verdict = parse_json(self.call_llm(make_prompt(self.name, self.instructions, payload),
-                                           tracer, purpose="verify"))
-        meta: Dict[str, Any] = {}
-        if not (isinstance(verdict, dict) and isinstance(verdict.get("ok"), bool)):
-            verdict, meta = {"ok": True, "issues": []}, {"parse_failed": True}  # no detection
+        prompt = make_prompt(self.name, self.instructions, payload)
+        finish_reasons: List[Optional[str]] = []
+        budget: Optional[int] = None
+        verdict: Any = None
+        for attempt in range(self.parse_retries + 1):
+            out = self.call_llm_full(prompt, tracer, purpose="verify", max_tokens=budget,
+                                     attempt=attempt)
+            finish_reasons.append(out.get("finish_reason"))
+            verdict = parse_json(out["text"])
+            if isinstance(verdict, dict) and isinstance(verdict.get("ok"), bool):
+                break
+            verdict = None
+            if out.get("finish_reason") == "length" and out.get("max_tokens"):
+                budget = 2 * out["max_tokens"]
+        meta: Dict[str, Any] = {"attempts": len(finish_reasons), "finish_reasons": finish_reasons}
+        if verdict is None:
+            # No verdict after all attempts: fail open (the artifact passes, so
+            # this can hide a fault but never raise an alarm) and say so.
+            verdict = {"ok": True, "issues": []}
+            meta.update(parse_failed=True, no_verdict=True)
+        elif len(finish_reasons) > 1:
+            meta["retried"] = True
         return Artifact(artifact_id=new_id("verdict"), producer=self.name,
                         content={"ok": verdict["ok"], "issues": list(verdict.get("issues") or []),
                                  "checked": target.artifact_id},

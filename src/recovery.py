@@ -48,7 +48,8 @@ class RecoveryReport:
     failures: List[str] = field(default_factory=list)
     final: Optional[RunResult] = None
     caught_downstream: Optional[bool] = None   # verify_all: fault missed, its effect caught later
-    verifier_parse_failures: int = 0           # verify_all: unparseable verifier replies
+    verifier_parse_failures: int = 0           # verify_all: verdicts still unparseable after retries
+    verifier_retries: int = 0                  # verify_all: verdicts that needed a retry to parse
 
     @property
     def clean_recovery(self) -> bool:
@@ -72,6 +73,7 @@ class RecoveryReport:
             f"{prefix}.failures": self.failures,
             f"{prefix}.caught_downstream": self.caught_downstream,
             f"{prefix}.verifier_parse_failures": self.verifier_parse_failures,
+            f"{prefix}.verifier_retries": self.verifier_retries,
         }
 
 
@@ -178,6 +180,7 @@ class VerifyAll(RecoveryStrategy):
                            and not v.get("upstream_faulty") and not v["ok"])
         caught_downstream = any(v.get("upstream_faulty") and not v["ok"] for v in verdicts)
         parse_failures = sum(1 for v in verdicts if v.get("parse_failed"))
+        retries = sum(1 for v in verdicts if v.get("retried"))
         faulty = next((a.artifact_id for a in run.tracer.artifacts.values() if a.faulty), None)
         irrev, harmful = fault_side_effects(run, task, faulty)
         return RecoveryReport(
@@ -191,6 +194,7 @@ class VerifyAll(RecoveryStrategy):
             detected=detected, false_alarms=false_alarms,
             failures=list(run.metrics["check_failures"]), final=run,
             caught_downstream=caught_downstream, verifier_parse_failures=parse_failures,
+            verifier_retries=retries,
         )
 
 

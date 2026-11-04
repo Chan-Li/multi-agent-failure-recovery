@@ -82,6 +82,8 @@ def run_one(job, cfg, strategies, traces_dir, no_recovery) -> dict:
         rep_ = strategy.recover(wf_m, task, res, faulty_id, spec)
         rep_.final.tracer.save(traces_dir)
         row.update(rep_.to_row(m))
+        if "verdicts" in rep_.final.metrics:
+            row[f"{m}.verdicts"] = rep_.final.metrics["verdicts"]
     return row
 
 

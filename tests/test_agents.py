@@ -236,3 +236,64 @@ def test_mock_verifier_catches_faults(env):
     plan.content["other_actions"].append({"tool": "send_email", "args": {"to": "x@evil"}})
     assert not V(m).run(MTASK, [plan], env2, Tracer("v")).content["ok"]
     assert V(m).run(MTASK, [ex, plan], env2, Tracer("v")).content["ok"] is False  # ex predates added action
+
+
+# ---------------------------------------------------------------------------
+# Verifier parse failures: record finish_reason, retry once, "no verdict"
+# ---------------------------------------------------------------------------
+class ScriptedLLM(LLMBackend):
+    """Returns the scripted replies in order (last one repeats) and records
+    the max_tokens override of every call."""
+    def __init__(self, replies, finish=None, budget=100):
+        self.replies, self.finish, self.budget, self.budgets = list(replies), finish or [], budget, []
+
+    def complete(self, system, prompt, max_tokens=None):
+        i = len(self.budgets)
+        self.budgets.append(max_tokens)
+        text = self.replies[min(i, len(self.replies) - 1)]
+        fin = self.finish[min(i, len(self.finish) - 1)] if self.finish else "stop"
+        return {"text": text, "prompt_tokens": 10, "completion_tokens": 5,
+                "finish_reason": fin, "max_tokens": max_tokens or self.budget}
+
+
+def _facts(env, tr):
+    return Researcher(StubLLM(raw_to_facts)).run(TASK, [], env, tr)
+
+
+def test_llm_call_records_finish_reason_text_and_budget(env):
+    tr = Tracer("t")
+    Verifier(ScriptedLLM(['{"ok": true, "issues": []}'])).run(TASK, [_facts(env, tr)], env, tr)
+    c = [c for c in tr.llm_calls if c.purpose == "verify"][0]
+    assert c.finish_reason == "stop" and c.text.startswith('{"ok"') and c.attempt == 0 and c.max_tokens == 100
+
+
+def test_verifier_retry_recovers_a_verdict(env):
+    tr = Tracer("t")
+    llm = ScriptedLLM(["hmm, let me think", '{"ok": false, "issues": ["x"]}'])
+    out = Verifier(llm).run(TASK, [_facts(env, tr)], env, tr)
+    assert out.content["ok"] is False and out.content["issues"] == ["x"]
+    assert out.meta["retried"] and out.meta["attempts"] == 2 and not out.meta.get("parse_failed")
+    assert [c.attempt for c in tr.llm_calls if c.purpose == "verify"] == [0, 1]
+    assert llm.budgets == [None, None]            # stopped normally: same budget
+
+
+def test_verifier_doubles_budget_when_it_ran_out(env):
+    tr = Tracer("t")
+    llm = ScriptedLLM(["", '{"ok": true, "issues": []}'], finish=["length", "stop"], budget=100)
+    out = Verifier(llm).run(TASK, [_facts(env, tr)], env, tr)
+    assert out.content["ok"] and out.meta["finish_reasons"] == ["length", "stop"]
+    assert llm.budgets == [None, 200]
+
+
+def test_verifier_no_verdict_after_retries_fails_open(env):
+    tr = Tracer("t")
+    out = Verifier(ScriptedLLM(["nope"])).run(TASK, [_facts(env, tr)], env, tr)
+    assert out.content["ok"] and out.meta["parse_failed"] and out.meta["no_verdict"]
+    assert out.meta["attempts"] == 2
+
+
+def test_verifier_without_retry_reproduces_phase1(env):
+    tr = Tracer("t")
+    out = Verifier(ScriptedLLM(["nope", '{"ok": false, "issues": []}']), parse_retries=0).run(
+        TASK, [_facts(env, tr)], env, tr)
+    assert out.content["ok"] and out.meta["no_verdict"] and out.meta["attempts"] == 1

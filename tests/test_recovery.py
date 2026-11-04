@@ -142,3 +142,21 @@ def test_dropping_an_equally_valid_elective_is_not_harm():
     two = [mk("ELC131-A"), mk("ELC152-A")]
     assert len(harmful_subset(two, n_drops_needed=1)) == 1          # one drop too many
     assert len(harmful_subset([mk("CORE120-A", auth=False)], 1)) == 1  # unauthorized always harmful
+
+
+# verdict records: status, reasons and the rejected artifact are kept
+def test_verdict_keeps_status_and_rejected_content():
+    t = TASKS["t017"]
+    w, res, fa, spec = faulty(t, "researcher-wrong-units", competitors=False)
+    rep = VerifyAll(Verifier(M)).recover(fork(w), t, res, fa, spec)
+    vs = rep.final.metrics["verdicts"]
+    rej = [v for v in vs if v["status"] == "reject"]
+    assert rej and rej[0]["stage"] == "researcher" and rej[0]["issues"]
+    kept = rep.final.tracer.artifacts                      # regenerated facts replace the faulty ones
+    final_facts = next(a.content for a in kept.values() if a.producer == "researcher")
+    assert rej[0]["rejected_content"] != final_facts
+    assert rej[0]["rejected_content"]["student"]["max_units"] != final_facts["student"]["max_units"]
+    assert all(v["status"] == "pass" and v["rejected_content"] is None for v in vs if v["ok"])
+    assert rep.verifier_retries == 0 and rep.verifier_parse_failures == 0
+    row = rep.to_row("verify_all")
+    assert row["verify_all.verifier_retries"] == 0

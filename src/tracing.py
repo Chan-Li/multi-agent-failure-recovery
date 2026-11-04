@@ -63,6 +63,10 @@ class LLMCall:
     completion_tokens: int
     latency_s: float
     purpose: str = "work"              # work | verify | recovery
+    finish_reason: Optional[str] = None  # API stop reason: "stop", "length" (budget hit), ...
+    text: Optional[str] = None           # raw reply, so parse failures can be diagnosed
+    attempt: int = 0                     # 0 = first try, 1 = retry after a parse failure
+    max_tokens: Optional[int] = None     # output budget of this call
 
 
 class Tracer:

@@ -51,7 +51,9 @@ def build_verifier(cfg: Dict[str, Any], self_verify: bool = False):
     llm_cfg = role_llm_cfg(cfg, "verifier")
     if self_verify:
         llm_cfg = {**llm_cfg, "model": role_llm_cfg(cfg, "planner")["model"]}
-    return Verifier(build_backend(llm_cfg), tool_access=cfg["recovery"].get("verifier_tool_access", True))
+    rec = cfg["recovery"]
+    return Verifier(build_backend(llm_cfg), tool_access=rec.get("verifier_tool_access", True),
+                    parse_retries=rec.get("verifier_parse_retries", 1))
 
 
 def build_strategy(cfg: Dict[str, Any], name: str):

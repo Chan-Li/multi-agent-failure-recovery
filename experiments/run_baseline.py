@@ -46,8 +46,14 @@ def main():
                 task["inputs"]["scenario"]).true_facts()) if "researcher" in res.outputs else None,
         }
         if mode in verifiers:
-            row["false_alarms"] = sum(not v["ok"] for v in res.metrics["verdicts"])
+            vs = res.metrics["verdicts"]
+            # on clean runs every rejection is a candidate false alarm; the
+            # verdicts (issues + rejected content) are kept so it can be checked
+            row["false_alarms"] = sum(v["status"] == "reject" for v in vs)
             row["regenerated"] = res.metrics["regenerated"]
+            row["verdicts"] = vs
+            row["verifier_parse_failures"] = sum(v["parse_failed"] for v in vs)
+            row["verifier_retries"] = sum(v["retried"] for v in vs)
         return row
 
     jobs = []

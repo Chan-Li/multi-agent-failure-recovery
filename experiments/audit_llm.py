@@ -1,8 +1,10 @@
 """Scan all traces + result rows for LLM response problems.
 Usage: python experiments/audit_llm.py [repo_root]
 
-Traces keep token counts but not raw replies, so "hit limit" means
-completion_tokens >= the role's max_tokens (configs/experiment.yaml)."""
+Phase 1 traces keep token counts only, so there "hit limit" means
+completion_tokens >= the role's max_tokens (configs/experiment.yaml). Newer
+traces also record finish_reason ("length" = budget hit), the call's own
+max_tokens and the raw reply; those are used when present."""
 import json, sys, glob, os, collections
 
 root = sys.argv[1] if len(sys.argv) > 1 else os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -21,14 +23,15 @@ for f in sorted(glob.glob(f"{root}/results/traces/*.json") + glob.glob(f"{root}/
     n_traces += 1
     t = json.load(open(f)); name = os.path.relpath(f, f"{root}/results")
     for c in t.get("llm_calls", []):
-        st = c["stage"]; ct = c["completion_tokens"]; lim = limit_for(st, name)
+        st = c["stage"]; ct = c["completion_tokens"]; lim = c.get("max_tokens") or limit_for(st, name)
         kind = st
         if st == "verifier":
             kind = "verifier-self" if "self" in name else ("verifier-strong-4096(obsolete)" if "obsolete" in name else "verifier-strong")
         calls[kind].append(ct)
-        if ct >= lim: hits.append((name, st, ct, lim))
+        if ct >= lim or c.get("finish_reason") == "length": hits.append((name, st, ct, lim, c.get("finish_reason")))
         elif ct >= NEAR * lim: near.append((name, st, ct, lim))
-        if ct < 20: tiny.append((name, st, ct, c["prompt_tokens"]))
+        empty_text = c.get("text") is not None and not c["text"].strip()
+        if ct < 20 or empty_text: tiny.append((name, st, ct, c["prompt_tokens"]))
     for a in t.get("artifacts", []):
         if (a.get("meta") or {}).get("parse_failed"):
             pf.append((name, a["producer"], a.get("meta")))
@@ -46,7 +49,7 @@ for title, rows in [("HIT LIMIT (completion >= max_tokens)", hits), (f"NEAR LIMI
 # result rows: errors + verifier verdict parse failures
 print("\n== result rows")
 for f in sorted(glob.glob(f"{root}/results/*.jsonl") + glob.glob(f"{root}/results/obsolete/*.jsonl")):
-    n = err = vpf = 0; errs = collections.Counter()
+    n = err = vpf = vret = 0; errs = collections.Counter()
     for l in open(f):
         r = json.loads(l); n += 1
         for k, v in r.items():
@@ -54,8 +57,9 @@ for f in sorted(glob.glob(f"{root}/results/*.jsonl") + glob.glob(f"{root}/result
                 err += 1; errs[str(v)[:120]] += 1
             if k.endswith("verdicts") or k == "verdicts":
                 vpf += sum(1 for x in v or [] if x.get("parse_failed"))
+                vret += sum(1 for x in v or [] if x.get("retried"))
         m = r.get("metrics") or {}
         for x in m.get("verdicts", []) or []:
             vpf += bool(x.get("parse_failed"))
-    print(f"  {os.path.relpath(f, root)}: rows={n} errors={err} verifier_verdict_parse_failures={vpf}")
+    print(f"  {os.path.relpath(f, root)}: rows={n} errors={err} verifier_no_verdict={vpf} verifier_retried={vret}")
     for e, c in errs.most_common(): print(f"     {c}x {e}")

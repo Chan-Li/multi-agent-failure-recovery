@@ -85,10 +85,17 @@ class Workflow:
                 if verifier is not None and stage in verify_stages:
                     va = verifier.run(task, [art] + prev, self.env, tracer)
                     v = va.content
+                    no_verdict = bool(va.meta.get("no_verdict"))
                     verdicts.append({"stage": stage, "ok": v["ok"], "issues": v["issues"],
+                                     "status": "no_verdict" if no_verdict else ("pass" if v["ok"] else "reject"),
                                      "artifact_faulty": art.faulty,
                                      "upstream_faulty": any(p.faulty for p in prev),
-                                     "parse_failed": bool(va.meta.get("parse_failed"))})
+                                     "parse_failed": bool(va.meta.get("parse_failed")),
+                                     "retried": bool(va.meta.get("retried")),
+                                     "finish_reasons": va.meta.get("finish_reasons", []),
+                                     # the regenerated artifact replaces this one in the
+                                     # trace, so keep what was rejected for later audit
+                                     "rejected_content": None if v["ok"] else art.content})
                     if not v["ok"]:
                         regenerated.append(stage)
                         if hasattr(self.env, "advance_clock"):

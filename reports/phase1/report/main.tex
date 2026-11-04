@@ -441,7 +441,9 @@ copy of the world exactly as the faulty run left it.
         planner and executor 4096, verifiers 16k. A first strong-verifier run
         at 4096 tokens hit the cap in 6 of 42 calls and returned empty
         replies, which would have counted as missed detections; we discarded
-        it and reran every verifier run at 16k. We then audited all 3,535 LLM
+        it and reran every strong-verifier run and every fault-run verifier at
+        16k. Only the clean runs with the self verifier kept the 4096 budget;
+        their largest output was 809 tokens. We then audited all 3,535 LLM
         calls behind the reported results for unparseable, empty and
         truncated replies (\code{experiments/audit\_llm.py}). No reply was
         empty, no researcher, executor or verifier reply failed to parse, and

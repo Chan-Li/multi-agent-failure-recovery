@@ -5,6 +5,13 @@ __pycache__/
 .DS_Store
 results/*
 !results/.gitkeep
+# real-model data that IS committed (see results/RUN_INFO.md);
+# the traces live in archive.tar.gz, mock results are regenerated for free
+!results/RUN_INFO.md
+!results/baseline.jsonl
+!results/faults.jsonl
+!results/faults_verify.jsonl
+!results/archive.tar.gz
 *.log
 logs/
 reports/**/*.aux

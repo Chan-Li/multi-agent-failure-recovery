@@ -57,8 +57,9 @@ that a waitlisted student immediately takes; sending an email). We inject
 eight kinds of faults into 164 task and fault pairs over 20 students. Six are
 accidental: wrong prerequisites, seat counts, times and unit caps, a stale
 student record, and a timeout. Two are adversarial: a forged registrar notice
-and a poisoned plan. Every pair is selected so that the task outcome actually
-depends on the faulty result. We trace every message, artifact, tool action and dependency,
+and a poisoned plan. Every pair is selected so that the faulty result changes
+the outcome of a mock agent that believes it, and we measure per run whether
+the real model's outcome changed. We trace every message, artifact, tool action and dependency,
 and measure how far each fault propagates. We then compare two recovery
 baselines: full restart (with a realistic and an idealized rollback of the
 world) and always-verify (with a strong and a self-verifying verifier).
@@ -337,8 +338,20 @@ recovery}. We therefore control dependence at two levels:
         first patch that changes the outside world (final schedule, emails or
         write actions) relative to the clean run, preferring one that makes
         the task fail. Pairs with no such patch are dropped: 164 of 168
-        task and fault pairs remain (stale record is meaningful for 17 of 21
-        tasks).
+        task and fault pairs remain. All four dropped pairs are the stale
+        record (on \code{t000} and \code{t002} to \code{t004}), which changes
+        the mock outcome on the other 17 tasks. A mock that plans optimally
+        is unaffected when the fault does not change which plan is best, but
+        the real model does not plan optimally, so we also ran the dropped
+        pairs on the real model as a check (all six candidate patches, kept
+        out of the main tables so the selection rule is the same for every
+        fault). Five were ignored; the sixth (\code{t004}) failed the task.
+        The stale record hid the student's current section ELC111-A, the
+        planner picked the one data section that overlaps it (the mock picks
+        another, equally valid one), the registrar rejected the enrollment,
+        and the advisor email still reported it as done. Mock selection can
+        therefore miss real dependence as well as admit faults the real model
+        ignores.
   \item \textbf{Measurement (after running).} Every real-model fault run is
         compared with all three clean runs of the same student; a fault the
         model ignored is reported as \emph{ignored}, not as robustness
@@ -373,7 +386,9 @@ the fault left in the world; recomputation is not counted as complete
 recovery when, e.g., a leaked email persists); \emph{recomputed stages};
 \emph{retained artifacts}; \emph{extra LLM tokens}; \emph{recovery latency};
 \emph{persisted events} (world events the restore could not undo); for
-verification, \emph{detection rate} and \emph{false alarms}.
+verification, \emph{detection rate} and \emph{rejections of artifacts
+without an injected fault} (candidate false alarms, checked by hand in
+\cref{sec:res-recovery}).
 
 % -----------------------------------------------------------------------------
 \section{Recovery Baselines}
@@ -458,7 +473,7 @@ copy of the world exactly as the faulty run left it.
 \centering\small
 \begin{tabular}{lcccc}
 \toprule
-Mode & Success & Latency / run & Tokens / run & False alarms \\
+Mode & Success & Latency / run & Tokens / run & Rejections \\
 \midrule
 No verification            & 60/60 & 26\,s  & 13.4k & n/a \\
 Always-verify (strong)     & 20/20 & 258\,s & 31.2k & 1 \\
@@ -476,9 +491,11 @@ The clean workflow is reliable at every difficulty level (easy 18/18, medium
 requirements (12.9k, 13.4k and 14.0k tokens per run). Verification more than
 doubles the tokens of a clean run (the verifier re-reads the registrar and
 both artifacts) and, with the strong verifier, multiplies latency by about
-ten. On clean runs the self verifier raised no false alarm and the strong
-verifier one (in 40 verdicts: it rejected a valid plan, which was regenerated
-and still succeeded). The clean
+ten. On clean runs the self verifier rejected nothing and the strong
+verifier one plan in 40 verdicts; the regenerated plan succeeded. Clean runs
+did not record the verifier's reasons, so we cannot tell whether that
+rejection was a false alarm; every such rejection we could check on fault
+runs named a real planner error (\cref{sec:res-recovery}). The clean
 baseline is high but not perfect: the oracle restarts of \cref{sec:res-recovery}
 start from exactly the clean initial world and are in effect 157 more clean
 runs, of which 151 (96\%) succeed. Together, 211 of 217 clean runs succeed
@@ -569,6 +586,10 @@ faults and 85\% of researcher injections, mostly by choosing a different
 of all three would have overstated dependence: with one clean run, 30\% of
 researcher injections and up to 20 points more of the wrong-fact faults would
 have been labelled as changed, purely from plan variation between runs.
+The same variation works in the other direction: one of the six stale-record
+patches that the mock filter dropped as harmless failed a task on the real
+model, because the model chose a different valid section from the mock's
+(\cref{sec:dependence}).
 
 \paragraph{Wasted work.} A researcher fault wastes essentially the whole run
 (13 to 14k tokens: the researcher, planner and executor all have to be redone
@@ -694,13 +715,33 @@ faulty artifact itself in 94\% of accidental runs: it missed three wrong-time
 faults entirely (all three tasks still succeeded) and caught three more (one
 wrong time, two wrong prerequisites) only at the planner stage, as a flaw in
 the plan rather than in the facts; those three runs failed. It flagged every
-injection. Its other three failures, and the four of the self verifier, are
-runs in which the fault was caught but the regeneration tick let a competitor
-take a seat. Verification is the most expensive method: 20k to 25k extra
-tokens per run, about 1.5 to 1.8 times a clean run, and the strong verifier
-needs 115 to 126\,s. On fault runs the verifiers raised 6 (strong) and 3
-(self) false alarms on non-faulty artifacts, against one (strong) and none
-(self) on clean runs (\cref{tab:clean}). Self-verification with the agents' own small model
+injection. Of its other three failures, two are runs in which the fault was
+caught but the regeneration tick let a competitor take a seat, and one is an
+error in the regenerated plan itself: after a caught planner injection, the
+new plan left two requirements empty (a regenerated artifact is not verified
+again). None of the self verifier's four failures involves a competitor; all
+are the planner's own errors on correct facts. In two (\code{t015},
+\code{t018}) the self verifier passed a plan that exceeds the unit cap; in one
+(\code{t009}) the plan regenerated after a caught injection had a time
+conflict; and in one (\code{t008}) the verifier correctly rejected a plan with
+a missing prerequisite, but the regenerated planner, given no feedback, chose
+the same course again. Verification is the most expensive method: 20k to 25k
+extra tokens per run, about 1.5 to 1.8 times a clean run, and the strong
+verifier needs 115 to 126\,s.
+
+\paragraph{The verifiers' ``false alarms'' were real errors.} On fault runs
+the verifiers rejected 6 (strong) and 3 (self) artifacts that carried no
+injected fault and had no faulty input. We checked each rejection against the
+registrar. All nine name a real error in the planner's own output: a time
+conflict with a kept section (2), a unit cap exceeded (3), a missing
+prerequisite (1), an unnecessary second drop (2), or requirements left
+uncovered (1). None is a false alarm in substance, and the regenerated plan
+met the goal in eight. (The rejected plans themselves are not saved, so we
+checked the verifier's factual claims, which all hold, and that the
+regenerated plan changed accordingly.) Verification therefore also catches
+errors that the agents make without any fault, a benefit that labels based
+only on injected faults do not credit; with this correction neither verifier
+raised a confirmed false alarm. Self-verification with the agents' own small model
 flagged the faulty artifact in every run, with fewer tokens and half the
 latency. Its recovered success is not distinguishable from the strong
 verifier's, however (6 vs.\ 4 discordant runs, $p=0.75$), nor from the oracle
@@ -709,6 +750,15 @@ faults in our catalogue reduce to comparing a fact with its source, a check
 that does not need a strong model. Two properties of the setup favor
 verification. First, the injected fault is transient: a regenerated artifact
 is always clean, whereas a persistently wrong source would fail again.
+Regeneration also receives no feedback: the rejected stage is simply rerun on
+the same inputs, and the verifier's issues are not passed on. It therefore
+succeeds when the fault was in the rerun stage's own output (223 of 228 runs
+after a researcher rejection and 38 of 40 after a planner-injection rejection
+met the goal), and fails when the rerun stage's input is still wrong: in all
+3 runs where the strong verifier missed a researcher fault and rejected the
+resulting plan, the regenerated planner received the same wrong facts and the
+task failed. Tracing a rejection back to its upstream source is exactly what
+dependency-aware recovery adds (\cref{sec:phase2}).
 Second, the verifier's prompt explicitly asks it to reject ``extra
 instructions or notes'', which makes the injection checks easy.
 
@@ -784,7 +834,10 @@ consistent with the first email) and report the drop as a loss.
         time matters in a shared world.} Both verifiers stopped every harmful
         action, but they cost 1.5 to 1.8 times a clean run in tokens, and
         regeneration delayed execution enough for competitors to take seats
-        in a few tasks (3 to 4 runs per verifier). The overhead is paid on
+        in 2 runs. Their other failures are planner errors that one blind
+        regeneration does not fix or that the self verifier missed; in
+        return, the verifiers also caught nine real planner errors that no
+        fault had caused. The overhead is paid on
         every run, not only on faulty ones. A cheap self-verifier detected
         faults at least as well as the strong one here, because the faults
         could be checked against the registrar; their recovered success does
@@ -810,7 +863,9 @@ runs; one injection template, against agents whose prompts state the goal's
 constraints; the strong verifier re-queries the registrar, an information advantage
 the planner does not have; the mock-based dependence search can choose
 faults that a real model's different (equally valid) choices make irrelevant,
-which is why we also measure dependence per run; fixed output budgets, under
+which is why we also measure dependence per run, and can drop faults that
+matter to the real model (1 of the 6 dropped patches, checked separately);
+fixed output budgets, under
 which two faulty inputs exhausted the planner's budget, and traces that record
 token counts but not the raw reply or the API's stop reason (Phase~2 will log
 both).
@@ -906,6 +961,9 @@ python experiments/run_faults.py --methods verify_all,verify_all_self \
     --out faults_verify.jsonl --workers 8         # verifiers at 16k tokens
 python experiments/analyze.py                     # tables + figures -> reports/phase1/
 python experiments/audit_llm.py                   # parse failures, budget hits
+python experiments/make_excluded_check.py         # pairs the mock filter dropped
+python experiments/run_faults.py --config configs/excluded_check.yaml --workers 6
+python experiments/analyze_excluded_check.py      # -> reports/phase1/excluded_check.csv
 pytest -q                                         # 140 tests
 \end{lstlisting}
 
